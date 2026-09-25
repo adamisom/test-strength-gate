@@ -208,6 +208,20 @@ def test_file_missing_at_base_but_present_at_head_is_inconclusive(repo):
     assert "tests/data/expected.json" in test.reason and "exists at head" in test.reason
 
 
+def test_binary_file_missing_at_base_but_present_at_head_is_inconclusive(repo):
+    # Codex re-review, remaining 1. The head-existence check must not decode
+    # the file: a binary fixture used to crash the gate with UnicodeDecodeError.
+    base = repo.commit(SRC_BASE)
+    (repo.path / "tests" / "data").mkdir(parents=True)
+    (repo.path / "tests" / "data" / "blob.bin").write_bytes(b"\xff\xfe\x00\x80\x81binary")
+    head = repo.commit({**REFACTOR, "tests/test_blob.py": "import pathlib, lib\n\ndef test_blob():\n"
+                        "    data = (pathlib.Path(__file__).parent / 'data' / 'blob.bin').read_bytes()\n"
+                        "    assert lib.double(len(data)) == 2 * len(data)\n"})
+    [test] = repo.gate(base, head, globs=["tests/**/*.py"]).tests
+    assert test.verdict == INCONCLUSIVE
+    assert "tests/data/blob.bin" in test.reason and "exists at head" in test.reason
+
+
 def test_file_missing_at_both_base_and_head_commits_stays_strong(repo):
     # A FileNotFoundError for a file the head commit doesn't have either is
     # behavior: here the old code forgets to create the output file.

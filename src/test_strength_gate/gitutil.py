@@ -43,6 +43,12 @@ def show(repo, rev, path):
     return proc.stdout if proc.returncode == 0 else None
 
 
+def exists(repo, rev, path):
+    """True if `path` exists at `rev`. Reads no contents, so binary files are safe."""
+    proc = subprocess.run(["git", "-C", str(repo), "cat-file", "-e", f"{rev}:{path}"], capture_output=True)
+    return proc.returncode == 0
+
+
 @contextmanager
 def worktree(repo, rev, path):
     """A detached worktree at `rev`, removed on exit."""
