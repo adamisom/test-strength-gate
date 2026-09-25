@@ -57,6 +57,40 @@ def split_test_id(test_id):
     return file, parts
 
 
+# Methods that pytest (or unittest) runs around every test in a class.
+_CLASS_SETUP = {"setup_method", "teardown_method", "setup_class", "teardown_class", "setup", "teardown",
+                "setUp", "tearDown", "setUpClass", "tearDownClass", "asyncSetUp", "asyncTearDown"}
+_FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+def _is_docstring(node):
+    return isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
+
+
+def _is_autouse_fixture(func):
+    return any(isinstance(d, ast.Call) and any(k.arg == "autouse" and isinstance(k.value, ast.Constant)
+                                               and k.value.value is True for k in d.keywords)
+               for d in func.decorator_list)
+
+
+def _class_context(cls):
+    """The parts of a test class that affect every test in it, as one string.
+
+    That is the class's decorators (e.g. @pytest.mark.usefixtures), bases and
+    keywords, its class-level statements (attributes, pytestmark), and its
+    setup/teardown methods and autouse fixtures. Other methods, i.e. the tests
+    themselves and plain helpers, are left out, so editing one test or a
+    helper doesn't make every test in the class count as modified.
+    """
+    body = [n for n in cls.body
+            if not isinstance(n, (*_FUNCTIONS, ast.ClassDef))
+            or (isinstance(n, _FUNCTIONS) and (n.name in _CLASS_SETUP or _is_autouse_fixture(n)))]
+    if cls.body and _is_docstring(cls.body[0]) and body and body[0] is cls.body[0]:
+        body = body[1:]
+    return "class " + cls.name + ": " + ", ".join(
+        ast.dump(n) for n in [*cls.decorator_list, *cls.bases, *cls.keywords, *body])
+
+
 def function_fingerprint(source, parts):
     """A formatting-insensitive fingerprint of one test function, or None.
 
@@ -64,7 +98,9 @@ def function_fingerprint(source, parts):
     decorators (so a changed @parametrize counts) and ignores comments,
     blank lines and line numbers (so reformatting does not count). The
     function's docstring is dropped too, since editing it doesn't change what
-    the test does.
+    the test does. For a test method, the context of each enclosing class
+    (see _class_context) is included, so a new class decorator or a changed
+    setup_method counts as a change to every test in the class.
     """
     if source is None or not parts:
         return None
@@ -72,17 +108,17 @@ def function_fingerprint(source, parts):
         body = ast.parse(source).body
     except SyntaxError:
         return None
-    node = None
+    node, context = None, []
     for name in parts:
-        node = next((n for n in body if isinstance(n, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
-                     and n.name == name), None)
+        node = next((n for n in body if isinstance(n, (ast.ClassDef, *_FUNCTIONS)) and n.name == name), None)
         if node is None:
             return None
+        if isinstance(node, ast.ClassDef):
+            context.append(_class_context(node))
         body = node.body
-    if (body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant)
-            and isinstance(body[0].value.value, str)):
+    if body and _is_docstring(body[0]):
         node.body = body[1:]
-    return ast.dump(node)
+    return "\n".join([*context, ast.dump(node)])
 
 
 def pick_judged(head_ids, base_ids, head_source, base_source):

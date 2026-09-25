@@ -284,3 +284,18 @@ def test_installed_copy_of_a_lib_layout_package_makes_base_inconclusive(repo, tm
     [test] = repo.gate(base, head).tests
     assert test.verdict == INCONCLUSIVE
     assert "outside the base worktree" in test.reason and "mypkg" in test.reason
+
+
+def test_new_class_decorator_makes_an_unchanged_method_modified(repo):
+    # Codex review finding 6. The PR adds @pytest.mark.usefixtures to a test
+    # class and leaves the method alone. Its setup changed, so it is judged.
+    fixture = ("import pytest\n\n@pytest.fixture\ndef fast_lib(monkeypatch):\n    import lib\n"
+               "    monkeypatch.setattr(lib, 'double', lambda x: 2 * x)\n")
+    method = "    def test_d(self):\n        assert lib.double(2) == 4\n"
+    base = repo.commit({"lib.py": "def double(x):\n    return x + x + 1\n", "tests/conftest.py": fixture,
+                        "tests/test_cls.py": "import lib\n\nclass TestD:\n" + method})
+    head = repo.commit({"lib.py": "def double(x):\n    return x + x\n",
+                        "tests/test_cls.py": "import lib, pytest\n\n@pytest.mark.usefixtures('fast_lib')\n"
+                                             "class TestD:\n" + method})
+    result = repo.gate(base, head)
+    assert [(t.id, t.kind) for t in result.tests] == [("tests/test_cls.py::TestD::test_d", "modified")]

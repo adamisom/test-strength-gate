@@ -69,6 +69,46 @@ def test_fingerprint_sees_decorator_changes():
     assert function_fingerprint(SOURCE, parts) != function_fingerprint(changed, parts)
 
 
+CLASS_SOURCE = '''
+import pytest
+
+class TestThing:
+    """Docs."""
+    limit = 3
+
+    def setup_method(self):
+        self.items = []
+
+    def helper(self):
+        return 1
+
+    def test_a(self):
+        assert self.items == []
+
+    def test_b(self):
+        assert self.limit == 3
+'''
+
+
+@pytest.mark.parametrize("old, new, changed", [
+    # Codex review finding 6: edits to the class itself change every test in it.
+    ("class TestThing:", "@pytest.mark.usefixtures('db')\nclass TestThing:", True),
+    ("class TestThing:", "class TestThing(Base):", True),
+    ("limit = 3", "limit = 4", True),
+    ("self.items = []", "self.items = [0]", True),
+    ("    def helper(self):", "    @pytest.fixture(autouse=True)\n    def helper(self):", True),
+    # Edits to a sibling test, a plain helper or the class docstring don't.
+    ("assert self.limit == 3", "assert self.limit == 4", False),
+    ("return 1", "return 2", False),
+    ('"""Docs."""', '"""Other docs."""', False),
+])
+def test_fingerprint_includes_the_enclosing_class_context(old, new, changed):
+    parts = ["TestThing", "test_a"]
+    edited = CLASS_SOURCE.replace(old, new)
+    assert edited != CLASS_SOURCE
+    assert (function_fingerprint(CLASS_SOURCE, parts) != function_fingerprint(edited, parts)) is changed
+
+
 def test_fingerprint_missing_function_or_file():
     assert function_fingerprint(SOURCE, ["test_absent"]) is None
     assert function_fingerprint(None, ["test_n"]) is None

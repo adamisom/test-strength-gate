@@ -11,7 +11,7 @@ Many pull requests written by coding agents are merged without a real review, an
 ## How it works
 
 1. It lists the files that changed between the base commit and the head commit, and keeps the ones that match the test file patterns. It uses the merge-base of the two commits, so changes that landed on the base branch later are not counted.
-2. It collects the tests in those files at head and at base, and keeps the tests that are new or whose function changed. It compares functions by their syntax tree, so edits to comments or formatting don't count.
+2. It collects the tests in those files at head and at base, and keeps the tests that are new or whose function changed. It compares functions by their syntax tree, so edits to comments or formatting don't count. For a test method, a change to its class's decorators, base classes, class attributes, setup and teardown methods, or autouse fixtures also counts.
 3. It creates a temporary git worktree at base, copies in the head version of every changed test file (including `conftest.py`), and runs the selected tests. A small pytest plugin records, for each test, the phase that failed and the exception type.
 4. It runs the same tests in a worktree at head to confirm they pass there, then labels each test and writes a markdown report and a JSON report.
 
