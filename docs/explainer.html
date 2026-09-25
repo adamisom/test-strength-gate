@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>test-strength-gate explained</title>
+<style>
+:root {
+  --bg: #fdfcf8;
+  --fg: #1f1d1a;
+  --muted: #6b665e;
+  --rule: #d9d4c8;
+  --box: #f4f1e8;
+  --code-bg: #f1eee5;
+  --accent: #7a3e12;
+  --strong: #2f6b3a;
+  --weak: #9a6a00;
+  --inconclusive: #3f5f86;
+  --broken: #a33a2a;
+  --skipped: #77736b;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #171614;
+    --fg: #e8e4da;
+    --muted: #a39d91;
+    --rule: #3a3731;
+    --box: #211f1c;
+    --code-bg: #24221e;
+    --accent: #e0a36f;
+    --strong: #7cc38a;
+    --weak: #e2b64f;
+    --inconclusive: #8fb2de;
+    --broken: #ee8a78;
+    --skipped: #a8a398;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #171614;
+  --fg: #e8e4da;
+  --muted: #a39d91;
+  --rule: #3a3731;
+  --box: #211f1c;
+  --code-bg: #24221e;
+  --accent: #e0a36f;
+  --strong: #7cc38a;
+  --weak: #e2b64f;
+  --inconclusive: #8fb2de;
+  --broken: #ee8a78;
+  --skipped: #a8a398;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+  font-size: 19px;
+  line-height: 1.6;
+}
+main { max-width: 44rem; margin: 0 auto; padding: 4rem 16px 6rem; }
+h1 { font-size: 2.3rem; line-height: 1.15; font-weight: 500; margin: 0 0 .6rem; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 500; margin: 4.2rem 0 1rem; padding-top: 1.2rem; border-top: 1px solid var(--rule); }
+h3 { font-size: 1.12rem; font-weight: 600; margin: 2.4rem 0 .6rem; }
+p, ul, ol { margin: 0 0 1.05rem; }
+ul, ol { padding-left: 1.4rem; }
+li { margin-bottom: .45rem; }
+a { color: var(--accent); }
+.meta { color: var(--muted); font-size: .92rem; margin-bottom: 2.4rem; }
+.lede { font-size: 1.12rem; }
+.toc { font-size: .95rem; columns: 2; column-gap: 2.5rem; padding-left: 1.2rem; margin: 1.5rem 0 0; }
+.toc li { margin-bottom: .25rem; break-inside: avoid; }
+code, pre, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-ligatures: none; }
+code { font-size: .82em; background: var(--code-bg); padding: .08em .3em; border-radius: 3px; overflow-wrap: anywhere; }
+pre {
+  font-size: .78rem; line-height: 1.5; background: var(--code-bg); padding: .9rem 1rem;
+  border-radius: 4px; overflow-x: auto; margin: 0 0 1.3rem; border-left: 3px solid var(--rule);
+}
+pre code { background: none; padding: 0; font-size: 1em; overflow-wrap: normal; }
+.cap { font-size: .85rem; color: var(--muted); margin: -.8rem 0 1.4rem; }
+figure { margin: 2rem 0 2.2rem; }
+figure svg { width: 100%; height: auto; display: block; }
+figcaption { font-size: .88rem; color: var(--muted); margin-top: .6rem; }
+table { border-collapse: collapse; width: 100%; font-size: .86rem; line-height: 1.45; margin: 0 0 1.4rem; }
+th, td { text-align: left; vertical-align: top; padding: .45rem .6rem .45rem 0; border-bottom: 1px solid var(--rule); }
+th { font-weight: 600; border-bottom: 1.5px solid var(--fg); }
+td:first-child code { white-space: nowrap; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; padding-right: .8rem; }
+tr.total td { font-weight: 600; border-top: 1.5px solid var(--fg); }
+.wide { overflow-x: auto; }
+.v { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .78em; letter-spacing: .02em; font-weight: 600; }
+.v.s { color: var(--strong); } .v.w { color: var(--weak); } .v.i { color: var(--inconclusive); }
+.v.b { color: var(--broken); } .v.k { color: var(--skipped); }
+.steps { counter-reset: step; list-style: none; padding-left: 0; }
+.steps > li { counter-increment: step; position: relative; padding-left: 2.4rem; margin-bottom: 1.3rem; }
+.steps > li::before {
+  content: counter(step); position: absolute; left: 0; top: .05rem; width: 1.6rem; height: 1.6rem;
+  border: 1px solid var(--rule); border-radius: 50%; text-align: center; font-size: .8rem; line-height: 1.55rem; color: var(--muted);
+}
+.where { display: block; font-size: .8rem; color: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; margin-bottom: .2rem; }
+.note { border-left: 3px solid var(--accent); padding: .2rem 0 .2rem 1rem; margin: 1.4rem 0; color: var(--fg); }
+details { border-top: 1px solid var(--rule); padding: .8rem 0; }
+details:last-of-type { border-bottom: 1px solid var(--rule); }
+summary { cursor: pointer; font-weight: 600; list-style-position: outside; }
+summary::marker { color: var(--muted); }
+details > div { padding: .6rem 0 0 0; }
+details > div p:last-child { margin-bottom: 0; }
+.svg-box { fill: var(--box); stroke: var(--rule); stroke-width: 1.2; }
+.svg-box-accent { fill: var(--box); stroke: var(--accent); stroke-width: 1.2; }
+.svg-t { fill: var(--fg); font-family: "Iowan Old Style", Palatino, Georgia, serif; font-size: 15px; }
+.svg-s { fill: var(--muted); font-family: "Iowan Old Style", Palatino, Georgia, serif; font-size: 13px; }
+.svg-m { fill: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11.5px; }
+.svg-line { stroke: var(--muted); stroke-width: 1.2; fill: none; }
+.svg-arrow { fill: var(--muted); }
+.svg-chip { fill: none; stroke-width: 1.4; }
+.svg-v { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; font-weight: 600; }
+footer { margin-top: 4rem; color: var(--muted); font-size: .85rem; }
+@media (max-width: 640px) {
+  body { font-size: 17px; }
+  main { padding-top: 2.5rem; }
+  h1 { font-size: 1.8rem; }
+  .toc { columns: 1; }
+  table { font-size: .8rem; }
+}
+@media print {
+  :root { --bg: #fff; --fg: #000; --muted: #444; --rule: #bbb; --box: #f6f6f6; --code-bg: #f3f3f3; --accent: #000; color-scheme: light; }
+  body { font-size: 11pt; background: #fff; }
+  main { max-width: none; padding: 0; }
+  h2 { break-before: auto; break-after: avoid; }
+  h3 { break-after: avoid; }
+  pre, figure, table, details { break-inside: avoid; }
+  pre { white-space: pre-wrap; border-left-color: #bbb; }
+  details > summary { list-style: none; }
+  details::details-content { content-visibility: visible; display: block; }
+  a { color: #000; text-decoration: none; }
+}
+</style>
+</head>
+<body>
+<main>
+
+<h1>test-strength-gate, explained</h1>
+<p class="meta">A private explainer for Adam Isom, written 9/25/26 against <code>main</code> at <code>75f4da1</code> (20 commits, 110 tests passing). Claude sub-agents built the code on 9/25/26, and three rounds of review by OpenAI's Codex hardened it. Where the design doc and the code disagreed, the code won, and the section near the end lists each disagreement and its correction.</p>
+
+<p class="lede">test-strength-gate is a GitHub Action for Python projects that use pytest. For each test a pull request adds or changes, it runs the test against the code from before the pull request and reports whether the test would have noticed if the pull request's source change were missing.</p>
+
+<ol class="toc">
+  <li><a href="#problem">The problem</a></li>
+  <li><a href="#system">The whole system on one page</a></li>
+  <li><a href="#walk">One pull request, end to end</a></li>
+  <li><a href="#verdicts">The verdict rules</a></li>
+  <li><a href="#plugin">The recorder plugin</a></li>
+  <li><a href="#honest">Keeping the base run honest</a></li>
+  <li><a href="#selection">Choosing tests with syntax trees</a></li>
+  <li><a href="#action">The Action's base and head</a></li>
+  <li><a href="#eval">The evaluation</a></li>
+  <li><a href="#codex">Three rounds of Codex review</a></li>
+  <li><a href="#limits">What it does not do, and open issues</a></li>
+  <li><a href="#calls">Calls left to Adam</a></li>
+  <li><a href="#disagree">Where the docs and the code disagreed</a></li>
+  <li><a href="#order">The order to read the code</a></li>
+  <li><a href="#quiz">Ten questions to answer without notes</a></li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="problem">The problem</h2>
+
+<p>A passing test run shows that the tests pass with the change in place, but it doesn't show that any of the new tests would fail without the change. A test that asserts almost nothing, or that checks behavior which was already true before the pull request, passes in exactly the same way as a test that pins down the fix. When coding agents write both the fix and its tests, and nobody reads them closely, the green check is often the only evidence a reviewer has.</p>
+
+<p>The gate answers one narrow question per test. It takes the code from before the pull request, adds only the pull request's test-side changes, and runs the new and changed tests there. A test that fails there depends on the change. A test that passes there would have passed anyway. The hard part is that many tests fail on old code for a reason that says nothing about behavior, most often because they import a function that doesn't exist yet, so the gate has to tell those failures apart from failures of a check.</p>
+
+<p>Each judged test gets one of five labels.</p>
+<ul>
+  <li><span class="v s">STRONG</span> means the test fails at base for a behavioral reason, such as an assertion, a <code>pytest.raises</code> block that didn't raise, or another exception from the old code.</li>
+  <li><span class="v w">WEAK</span> means the test passes at base. The label is a prompt for a reviewer and is expected for refactors.</li>
+  <li><span class="v i">INCONCLUSIVE</span> means the test fails at base only because the API or input it uses is new, or because the run couldn't judge it.</li>
+  <li><span class="v b">BROKEN_AT_HEAD</span> means the test doesn't pass on the pull request's own code, so nothing else about it can be judged.</li>
+  <li><span class="v k">SKIPPED</span> means pytest skipped the test at base or at head.</li>
+</ul>
+
+<p>The idea is not new. SWE-bench grades fixes the same way, with tests that must fail before the reference fix and pass after it. Adam built a version of this check at a previous job. The contribution here is a reusable Action and careful handling of the cases that fool a simple version.</p>
+
+<!-- ============================================================ -->
+<h2 id="system">The whole system on one page</h2>
+
+<p>The CLI entry point is <code>cli.main</code>, and the orchestration is one function, <code>gate.run_gate</code>. Everything else is a helper that one step of <code>run_gate</code> calls.</p>
+
+<figure>
+<svg viewBox="0 0 720 704" role="img" aria-labelledby="sysTitle sysDesc" xmlns="http://www.w3.org/2000/svg">
+  <title id="sysTitle">From a pull request's diff to a verdict per test</title>
+  <desc id="sysDesc">The pull request's base and head commits are diffed from their merge-base. Changed files are sorted into the test side, deleted test-side files, Python source and other inputs. Tests are collected at head and at the unchanged base, and the added and modified ones are picked. Two git worktrees run pytest with the recorder plugin. classify.py turns each pair of results into one of five verdicts, and report.py and cli.py write the report.</desc>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="svg-arrow"/>
+    </marker>
+  </defs>
+
+  <rect x="210" y="10" width="300" height="58" rx="5" class="svg-box"/>
+  <text x="360" y="34" text-anchor="middle" class="svg-t">Pull request: base and head commits</text>
+  <text x="360" y="54" text-anchor="middle" class="svg-m">cli.main → gate.run_gate</text>
+  <line x1="360" y1="68" x2="360" y2="94" class="svg-line" marker-end="url(#ah)"/>
+
+  <rect x="140" y="96" width="440" height="58" rx="5" class="svg-box"/>
+  <text x="360" y="120" text-anchor="middle" class="svg-t">Diff the head against the merge-base</text>
+  <text x="360" y="140" text-anchor="middle" class="svg-m">gitutil.merge_base, gitutil.changed_files</text>
+
+  <path d="M360 154 V172 M90 172 H630" class="svg-line"/>
+  <line x1="90" y1="172" x2="90" y2="190" class="svg-line" marker-end="url(#ah)"/>
+  <line x1="270" y1="172" x2="270" y2="190" class="svg-line" marker-end="url(#ah)"/>
+  <line x1="450" y1="172" x2="450" y2="190" class="svg-line" marker-end="url(#ah)"/>
+  <line x1="630" y1="172" x2="630" y2="190" class="svg-line" marker-end="url(#ah)"/>
+
+  <rect x="10" y="192" width="160" height="70" rx="5" class="svg-box-accent"/>
+  <text x="90" y="214" text-anchor="middle" class="svg-t">Test side</text>
+  <text x="90" y="233" text-anchor="middle" class="svg-s">matches the patterns,</text>
+  <text x="90" y="250" text-anchor="middle" class="svg-s">copied into base</text>
+
+  <rect x="190" y="192" width="160" height="70" rx="5" class="svg-box-accent"/>
+  <text x="270" y="214" text-anchor="middle" class="svg-t">Deleted test side</text>
+  <text x="270" y="233" text-anchor="middle" class="svg-s">removed from base</text>
+  <text x="270" y="250" text-anchor="middle" class="svg-s">before the copy</text>
+
+  <rect x="370" y="192" width="160" height="70" rx="5" class="svg-box"/>
+  <text x="450" y="214" text-anchor="middle" class="svg-t">Python source</text>
+  <text x="450" y="233" text-anchor="middle" class="svg-s">stays at base, since</text>
+  <text x="450" y="250" text-anchor="middle" class="svg-s">it is the change tested</text>
+
+  <rect x="550" y="192" width="160" height="70" rx="5" class="svg-box"/>
+  <text x="630" y="214" text-anchor="middle" class="svg-t">Other inputs</text>
+  <text x="630" y="233" text-anchor="middle" class="svg-s">stay at base, named</text>
+  <text x="630" y="250" text-anchor="middle" class="svg-s">in the report if strong</text>
+
+  <line x1="90" y1="262" x2="90" y2="292" class="svg-line" marker-end="url(#ah)"/>
+  <rect x="10" y="294" width="700" height="58" rx="5" class="svg-box"/>
+  <text x="360" y="318" text-anchor="middle" class="svg-t">Collect tests at head and at the unchanged base, and keep the added and modified ones</text>
+  <text x="360" y="338" text-anchor="middle" class="svg-m">runner.run_pytest(collect_only=True), selection.pick_judged</text>
+
+  <line x1="180" y1="352" x2="180" y2="382" class="svg-line" marker-end="url(#ah)"/>
+  <line x1="540" y1="352" x2="540" y2="382" class="svg-line" marker-end="url(#ah)"/>
+
+  <rect x="10" y="384" width="340" height="94" rx="5" class="svg-box-accent"/>
+  <text x="180" y="408" text-anchor="middle" class="svg-t">Base worktree</text>
+  <text x="180" y="428" text-anchor="middle" class="svg-s">base source plus the PR's whole test side</text>
+  <text x="180" y="448" text-anchor="middle" class="svg-m">pytest -p tsg_recorder, judged IDs only</text>
+  <text x="180" y="466" text-anchor="middle" class="svg-m">remove_files, checkout_files</text>
+
+  <rect x="370" y="384" width="340" height="94" rx="5" class="svg-box"/>
+  <text x="540" y="408" text-anchor="middle" class="svg-t">Head worktree</text>
+  <text x="540" y="428" text-anchor="middle" class="svg-s">the head commit as it is</text>
+  <text x="540" y="448" text-anchor="middle" class="svg-m">pytest -p tsg_recorder, judged IDs only</text>
+  <text x="540" y="466" text-anchor="middle" class="svg-m">gitutil.worktree</text>
+
+  <line x1="180" y1="478" x2="180" y2="512" class="svg-line" marker-end="url(#ah)"/>
+  <line x1="540" y1="478" x2="540" y2="512" class="svg-line" marker-end="url(#ah)"/>
+  <text x="360" y="499" text-anchor="middle" class="svg-m">JSON: phase, exception, where raised</text>
+
+  <rect x="10" y="514" width="700" height="58" rx="5" class="svg-box"/>
+  <text x="360" y="538" text-anchor="middle" class="svg-t">Collapse each test's phases, then pair its base result with its head result</text>
+  <text x="360" y="558" text-anchor="middle" class="svg-m">classify.summarize, classify.verdict, classify.failure_kind</text>
+
+  <line x1="360" y1="572" x2="360" y2="592" class="svg-line" marker-end="url(#ah)"/>
+  <rect x="10" y="594" width="128" height="34" rx="17" class="svg-chip" style="stroke: var(--strong)"/>
+  <text x="74" y="615" text-anchor="middle" class="svg-v" style="fill: var(--strong)">STRONG</text>
+  <rect x="153" y="594" width="128" height="34" rx="17" class="svg-chip" style="stroke: var(--weak)"/>
+  <text x="217" y="615" text-anchor="middle" class="svg-v" style="fill: var(--weak)">WEAK</text>
+  <rect x="296" y="594" width="128" height="34" rx="17" class="svg-chip" style="stroke: var(--inconclusive)"/>
+  <text x="360" y="615" text-anchor="middle" class="svg-v" style="fill: var(--inconclusive)">INCONCLUSIVE</text>
+  <rect x="439" y="594" width="128" height="34" rx="17" class="svg-chip" style="stroke: var(--broken)"/>
+  <text x="503" y="615" text-anchor="middle" class="svg-v" style="fill: var(--broken)">BROKEN_AT_HEAD</text>
+  <rect x="582" y="594" width="128" height="34" rx="17" class="svg-chip" style="stroke: var(--skipped)"/>
+  <text x="646" y="615" text-anchor="middle" class="svg-v" style="fill: var(--skipped)">SKIPPED</text>
+
+  <line x1="360" y1="628" x2="360" y2="646" class="svg-line" marker-end="url(#ah)"/>
+  <rect x="110" y="648" width="500" height="50" rx="5" class="svg-box"/>
+  <text x="360" y="668" text-anchor="middle" class="svg-t">Markdown and JSON report, job summary, annotations, exit code</text>
+  <text x="360" y="688" text-anchor="middle" class="svg-m">report.to_markdown, report.to_json, cli.main</text>
+</svg>
+<figcaption>The outlined boxes are the parts that keep the base run honest. Only the test side changes in the base worktree, so a failure there can come from the missing source change, or from a new API or input, and <code>classify.py</code> exists to tell those apart.</figcaption>
+</figure>
+
+<p>The code is small. Outside the plugin it is 877 lines of standard-library Python across nine modules (738 lines without blank lines), and the recorder plugin is another 285 lines that import only the standard library and pytest.</p>
+
+<div class="wide">
+<table>
+  <thead><tr><th>Module</th><th class="n">Lines</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>gate.py</code></td><td class="n">176</td><td>Runs every step in order, builds the base worktree, and makes the file rows for test files that fail at head.</td></tr>
+    <tr><td><code>classify.py</code></td><td class="n">201</td><td>Holds every exception rule in <code>failure_kind</code>, and pairs base and head outcomes in <code>verdict</code>.</td></tr>
+    <tr><td><code>plugin/tsg_recorder.py</code></td><td class="n">285</td><td>Runs inside the project's pytest. Deselects tests that aren't judged, records each phase, and lists project modules loaded from outside the worktree.</td></tr>
+    <tr><td><code>selection.py</code></td><td class="n">142</td><td>Matches the file patterns and fingerprints test functions with <code>ast</code>.</td></tr>
+    <tr><td><code>report.py</code></td><td class="n">117</td><td>Writes the summary line, the table, the legend and the JSON.</td></tr>
+    <tr><td><code>gitutil.py</code></td><td class="n">101</td><td>Wraps git for the merge-base, the diff, worktrees, file existence and git-ignored files.</td></tr>
+    <tr><td><code>cli.py</code></td><td class="n">68</td><td>Parses arguments, prints workflow annotations and sets the exit code.</td></tr>
+    <tr><td><code>runner.py</code></td><td class="n">66</td><td>Runs pytest in a worktree with the right environment and a 900-second limit, then reads the plugin's JSON.</td></tr>
+    <tr><td><code>action.yml</code></td><td class="n">99</td><td>The composite GitHub Action.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="walk">One pull request, end to end: cachier #279</h2>
+
+<p>cachier is a Python caching library. Pull request #279, written by GitHub Copilot, fixes a bug where <code>enable_caching()</code> had no effect on functions decorated while caching was off. The fix is a five-line change in <code>src/cachier/core.py</code>, and the pull request adds one test file with three tests. All three are named after the regression, and only one of them exercises it. The steps below follow a fresh run on 9/25/26 on <code>75f4da1</code>, with base <code>bd455da</code> (the merge commit's parent) and head <code>6f2127f</code> (the squash-merge commit). The run took about 1.5 seconds.</p>
+
+<p>Here is the whole source change. At base, the decorator imports the global settings object once, when a function is decorated. At head, the wrapper imports it on every call.</p>
+
+<pre><code>@@ def cachier(
+-    from .config import _global_params
+-
+     # Check for deprecated parameters
+@@
+             _print = print if verbose else lambda x: None
+
++            # Check current global caching state dynamically
++            from .config import _global_params
++
+             if ignore_cache or not _global_params.caching_enabled:</code></pre>
+
+<ol class="steps">
+  <li><span class="where">cli.main → gate.run_gate</span>The CLI resolves both commits and computes their merge-base. Base is the parent of head, so the merge-base is base itself.</li>
+  <li><span class="where">gitutil.changed_files, selection.matches_any</span><code>git diff --name-status --no-renames</code> returns two files. <code>tests/test_caching_regression.py</code> matches the default patterns (<code>test_*.py</code>, <code>*_test.py</code>, <code>tests/**</code>, <code>**/conftest.py</code>), so it goes to <code>test_files</code>. <code>src/cachier/core.py</code> is a <code>.py</code> file outside the patterns, so it goes to <code>source_files</code>. Nothing is deleted and there are no other inputs.</li>
+  <li><span class="where">gitutil.show</span>The gate reads the test file's text at both commits. It doesn't exist at base, so there is nothing to collect at base and every test in it will count as added.</li>
+  <li><span class="where">gitutil.worktree, gitutil.copy_generated_files</span>The gate creates two detached worktrees in a temporary folder, one at head and one at base, and copies in any git-ignored <code>.py</code> files from the checkout, such as a generated <code>version.py</code>. cachier needs none.</li>
+  <li><span class="where">runner.run_pytest(collect_only=True), selection.pick_judged</span>A collect-only run at head finds three tests. None of their IDs exist at base, so <code>pick_judged</code> marks all three as added.</li>
+  <li><span class="where">gitutil.remove_files, gitutil.checkout_files</span>The gate removes deleted test-side files from the base worktree (none here), then checks out the head version of every test-side file into it. The base worktree now holds base's <code>core.py</code> and head's new test file.</li>
+  <li><span class="where">runner.run_pytest(select=...)</span>The gate runs pytest on the test file in each worktree. <code>PYTHONPATH</code> starts with the plugin folder, the worktree root and the worktree's <code>src/</code>, so the base run imports the base worktree's <code>cachier</code> and not the editable install in the project's virtualenv. The plugin's check for modules loaded from outside the worktree finds none.</li>
+  <li><span class="where">plugin: pytest_runtest_makereport, pytest_runtest_logreport</span>At base, two tests pass and <code>test_original_issue_scenario</code> fails in its call phase with an <code>AssertionError</code> whose first line is <code>assert 2 == 1</code>, raised at <code>tests/test_caching_regression.py:122</code>. At head, all three pass.</li>
+  <li><span class="where">classify.summarize, classify.verdict, classify.failure_kind</span>Head passed, so the base result decides. Two tests passed at base, so they are <span class="v w">WEAK</span>. The third failed on an <code>AssertionError</code>, which <code>failure_kind</code> calls <code>"assertion"</code>, so it is <span class="v s">STRONG</span>.</li>
+  <li><span class="where">report.to_markdown, cli.main</span>The report's summary line reads "3 new tests: 1 strong, 2 weak (pass without the source change), 0 inconclusive". In a workflow, each weak test also gets a warning annotation on the pull request's Files tab. The default <code>--fail-on none</code> means the exit code is 0.</li>
+</ol>
+
+<h3>Why two tests named after the regression pass at base</h3>
+
+<p>At base, <code>set_global_params</code> builds a new settings object with <code>dataclasses.replace</code> and swaps it in, while <code>enable_caching()</code> and <code>disable_caching()</code> change the current object in place. A function decorated at base keeps the object that existed when it was decorated. So the bug only appears when <code>set_global_params</code> runs after decoration and caching is then turned on.</p>
+
+<ul>
+  <li><code>test_enable_caching_after_decorator_definition</code> calls <code>set_global_params(caching_enabled=False)</code> before it decorates the function. After that it only calls <code>enable_caching()</code>, which changes the same object the function already holds, so it passes at base.</li>
+  <li><code>test_disable_caching_after_decorator_definition</code> never calls <code>set_global_params</code> at all. <code>enable_caching()</code> and <code>disable_caching()</code> both worked before the fix.</li>
+  <li><code>test_original_issue_scenario</code> decorates a method at class definition, then calls <code>set_global_params(stale_after=...)</code> and <code>enable_caching()</code> inside <code>__init__</code>. At base the method still holds the old object with caching off, so the second call runs the function again and the counter is 2 instead of 1.</li>
+</ul>
+
+<p>The gate can't say why a weak test is weak. It only says the test would pass without the change, and a person then reads the test next to the diff, as above.</p>
+
+<!-- ============================================================ -->
+<h2 id="verdicts">The verdict rules in classify.py</h2>
+
+<p><code>verdict(base, head)</code> checks the head result first, because a test that doesn't pass on the pull request's own code tells you nothing about the old code. The order of the checks is the whole policy.</p>
+
+<ol>
+  <li>If the test was skipped at head, it is <span class="v k">SKIPPED</span>.</li>
+  <li>If the whole pytest run at head failed, such as a timeout or a <code>conftest.py</code> that won't load, it is <span class="v i">INCONCLUSIVE</span>, because the test's own result at head is unknown.</li>
+  <li>If the test didn't pass at head for any other reason, it is <span class="v b">BROKEN_AT_HEAD</span>, whatever happened at base.</li>
+  <li>If it passed at base, it is <span class="v w">WEAK</span>.</li>
+  <li>If it was skipped at base, it is <span class="v k">SKIPPED</span>.</li>
+  <li>If it wasn't collected at base, or it failed in setup, teardown, collection, or a failed run at base, or the base run loaded project code from outside the worktree, it is <span class="v i">INCONCLUSIVE</span>. A failing fixture at base is inconclusive even when its exception looks behavioral.</li>
+  <li>Otherwise the test failed in its call phase at base, and <code>failure_kind</code> decides from the exception.</li>
+</ol>
+
+<pre><code>def failure_kind(exc_type, message, attr_owner=None, file_at_head=False, origin=""):
+    if exc_type in ("AssertionError", "Failed"):
+        return "assertion"
+    if exc_type in MISSING_API_ERRORS:          # ImportError, ModuleNotFoundError, NameError
+        return "missing_api"
+    if exc_type == "FileNotFoundError" and file_at_head:
+        return "missing_file"
+    if exc_type == "AttributeError":
+        return "other_error" if attr_owner == "builtin" else "missing_api"
+    if exc_type == "TypeError" and ARGUMENT_MISMATCH.search(message or ""):
+        return "unclear_call" if origin == "project" else "missing_api"
+    return "other_error"</code></pre>
+<p class="cap"><code>src/test_strength_gate/classify.py</code>, with the docstring and comments removed. <code>assertion</code> and <code>other_error</code> become STRONG, and the other three become INCONCLUSIVE.</p>
+
+<p>Each rule exists because a simpler rule gave a wrong answer.</p>
+
+<ul>
+  <li><strong><code>Failed</code> counts as a check.</strong> A <code>pytest.raises</code> block that doesn't raise fails with pytest's <code>Failed: DID NOT RAISE</code>, and <code>Failed</code> is not a subclass of <code>AssertionError</code>. The original brief counted only <code>AssertionError</code> as strong, which would have missed a common kind of strong test. Four of the evaluation's strong verdicts come from this rule, all in OpenEnv.</li>
+  <li><strong>Import and name errors are inconclusive.</strong> A test that imports a function the pull request adds fails at base with <code>ImportError</code> before it checks anything. Calling that strong would be the most common false positive, and the design's second goal is to never make it. The demo in <code>examples/demo.py</code> shows it with <code>test_word_count</code>.</li>
+  <li><strong>AttributeError depends on what lacked the attribute.</strong> The brief called every <code>AttributeError</code> inconclusive. But <code>calc.new_func()</code> failing on a module means a missing API, while <code>find_word(...).upper()</code> failing on <code>None</code> means the old code returned the wrong thing. Since Python 3.10 an <code>AttributeError</code> carries <code>.obj</code>, so the plugin records the kind of object. Only a builtin owner, such as <code>None</code>, a list or a string, makes the failure behavioral. A module, a class, any other object, or an unknown owner counts as a missing API. OpenEnv's <code>'list' object has no attribute 'get'</code> is strong for this reason.</li>
+  <li><strong>A FileNotFoundError for a file that exists at head is inconclusive.</strong> The input differs between the runs, not the code. A file that head doesn't have either stays strong, because then the old code failed to create something, which is behavior. The gate checks existence with <code>git cat-file -e</code>, which reads no contents and so works for binary files.</li>
+  <li><strong>An argument TypeError is inconclusive, and where it was raised changes the reason.</strong> "unexpected keyword argument" usually means the test passes a new parameter. Python raises that error in the frame that made the call, so when the frame is in the project's own code, the old code may simply call something wrongly, which would be a behavioral failure. It still can't be strong, because a project decorator's <code>*args, **kwargs</code> wrapper raises the same error inside project code when a test passes a new keyword. The reason says the cause is unclear and names the line.</li>
+  <li><strong>Any other exception is strong, with a conditional reason.</strong> A <code>ValueError</code> or <code>KeyError</code> from the old code means the test saw the old code behave differently, and the test passes at head. The rule is a heuristic, because something other than the source can differ between the runs. So the reason says where the exception was raised and ends with "Not a check, so inspect the cause: this is strong only if the old code caused it."</li>
+</ul>
+
+<p>The stricter alternatives were measured on the evaluation. Five of the 20 strong verdicts come from exceptions other than a check, and the hand check found all five correct. Making every other exception inconclusive would have lost all five. Requiring old project code on the stack would have lost OpenEnv's two <code>JSONDecodeError</code>s, which the test's own <code>json.loads</code> raises on a file the old code wrote.</p>
+
+<p>A bare <code>assert</code> in a helper that pytest doesn't rewrite fails with an empty message, and the report used to say only "AssertionError". The verdict stays strong, but the reason now adds the failing line and a line from stderr. On robocop #1764 the reason reads "Fails at base on a check that has no message, at tests/formatter/__init__.py:106: <code>assert exc_info.value.exit_code == exit_code</code>. Last error on stderr: InvalidParameterError: ...", which shows that base rejected the new option.</p>
+
+<!-- ============================================================ -->
+<h2 id="plugin">The recorder plugin</h2>
+
+<p><code>plugin/tsg_recorder.py</code> is a plain module that pytest loads with <code>-p tsg_recorder</code>, found because the runner puts its folder first on <code>PYTHONPATH</code>. It runs inside the project's own Python, so it works even when the gate runs from a different virtualenv, and it imports only the standard library and pytest. It reads its settings from environment variables (<code>TSG_OUT</code>, <code>TSG_ROOT</code>, <code>TSG_SELECT</code>, <code>TSG_ORIGINAL_REPO</code>) and writes one JSON file at the end of the session.</p>
+
+<h3>Selecting tests inside pytest, not on the command line</h3>
+
+<p>The brief said to pass the judged test IDs to pytest. But if one of those IDs doesn't exist, pytest prints "no tests ran" and exits with code 4 without running the IDs that do exist, as a check with pytest 9.1.1 on 9/25/26 confirmed. A test that is new at head can have an ID that base can't collect, so one such test would wipe out the whole base run. The runner therefore passes whole files, and the plugin drops every test whose ID isn't on the list.</p>
+
+<pre><code>def pytest_collection_modifyitems(config, items):
+    select_file = os.environ.get("TSG_SELECT")
+    if not select_file:
+        return
+    wanted = set(json.loads(Path(select_file).read_text()))
+    keep, drop = [], []
+    for item in items:
+        (keep if _canonical_id(item.path, item.nodeid) in wanted else drop).append(item)
+    if drop:
+        config.hook.pytest_deselected(items=drop)
+        items[:] = keep</code></pre>
+
+<p>IDs are rebuilt relative to the worktree root by <code>_canonical_id</code>, because pytest's own node IDs are relative to its rootdir, which depends on ini files and arguments and can differ between the two runs. The runner also passes <code>--continue-on-collection-errors</code>, because otherwise one file that fails to import stops the whole session.</p>
+
+<h3>Recording each phase</h3>
+
+<pre><code>@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report = outcome.get_result()
+    exc = call.excinfo
+    ...
+    report.user_properties.append(("tsg", {
+        "id": _canonical_id(item.path, item.nodeid),
+        "exc_type": exc.type.__name__ if exc else None,
+        "message": str(exc.value)[:500] if exc else None,
+        "attr_owner": _attr_owner(exc.value) if exc else None,
+        "missing_path": _missing_path(exc.value) if exc else None,
+        ...</code></pre>
+
+<p>The live exception object exists only in <code>pytest_runtest_makereport</code>, on the process that ran the test. The plugin wraps that hook, reads the exception, and attaches plain strings to the report's <code>user_properties</code>, which pytest-xdist sends to its main process. <code>pytest_runtest_logreport</code> then stores one record per phase (setup, call, teardown). pytest-xdist itself is untested. <code>pytest_collectreport</code> stores the last <code>E</code> line of any file that fails to import, and <code>pytest_sessionfinish</code> writes the JSON.</p>
+
+<p>For each failure the plugin records these fields.</p>
+<ul>
+  <li><code>exc_type</code> and the message, cut to 500 characters.</li>
+  <li><code>attr_owner</code> for an <code>AttributeError</code>, which is module, class, builtin or object, read from <code>.obj</code>. It is unset when code raises the error itself, as <code>monkeypatch</code> and <code>mock.patch</code> do.</li>
+  <li><code>missing_path</code> for a <code>FileNotFoundError</code> inside the worktree.</li>
+  <li><code>raised_at</code>, the innermost traceback frame, and <code>local_at</code>, the innermost frame inside the worktree. The gate's <code>_set_origin</code> turns these into test, project or library.</li>
+  <li>For an <code>AssertionError</code> with no message only, <code>source_line</code> and <code>stderr_hint</code>, each cut to 200 characters. The hint is the last captured stderr line that contains "error", "exception" or "traceback", or else the last line.</li>
+</ul>
+
+<p>A small recorder beat two alternatives. JUnit XML writes the same <code>&lt;failure&gt;</code> element for an <code>AssertionError</code> and an <code>AttributeError</code>, as a check on 9/25/26 confirmed, and it can't carry the <code>.obj</code> that the attribute rule needs. A third-party JSON plugin would add a dependency to the project under test.</p>
+
+<!-- ============================================================ -->
+<h2 id="honest">Keeping the base run honest</h2>
+
+<p>The base run must test base source with the pull request's test side, and nothing else. Every way it can drift produces a wrong verdict with no visible error, so most of the gate's code is about this.</p>
+
+<h3>Worktrees, not a checkout</h3>
+
+<p>The gate creates two detached git worktrees in a temporary folder and removes them in a <code>finally</code> block. It never touches the caller's checkout, which may have uncommitted changes, and which later CI steps expect to find unchanged. Stashing and checking out base was the alternative. A worktree for head as well means both runs happen under the same conditions, with the same paths and no local edits.</p>
+
+<h3>What the base worktree holds</h3>
+
+<ul>
+  <li><strong>Base source.</strong> Every file outside the test patterns stays at its base version, including the Python source under test.</li>
+  <li><strong>The head test side.</strong> Every file that matches the patterns and that the pull request adds or changes is checked out at head, including <code>conftest.py</code> and non-Python fixtures. Only <code>.py</code> files other than <code>conftest.py</code> are passed to pytest, because on robocop a <code>.robot</code> fixture passed to pytest made it exit with code 4 and judge nothing.</li>
+  <li><strong>Deletions.</strong> Test-side files the pull request deletes are removed with <code>git rm</code> before the copy. Removing first lets a file be replaced by a folder of the same name, which the first version of the fix crashed on.</li>
+  <li><strong>Generated files.</strong> Git-ignored <code>.py</code> files in the caller's checkout are copied into both worktrees where their folder exists. On plumbum, hatch-vcs writes <code>version.py</code> at install time, a fresh worktree lacked it, and nothing was judged.</li>
+</ul>
+
+<pre><code>gitutil.remove_files(base_wt, deleted_test_files)
+gitutil.checkout_files(base_wt, head_sha, result.test_files)
+files = sorted({test_id.split("::")[0] for test_id in judged})
+base_run = run(base_wt, files, select=list(judged))
+head_run = run(head_wt, files, select=list(judged))</code></pre>
+<p class="cap"><code>gate.run_gate</code>. The unchanged base was already collected before this point, to learn which test IDs existed at base.</p>
+
+<h3>PYTHONPATH, and catching a misrouted install</h3>
+
+<p>Projects usually install themselves, often with <code>pip install -e .</code>. An editable install points at the caller's checkout, which is at head, and a regular install puts a copy of head in site-packages. Either way the base run could import head code, every test would pass, and every test would look weak with no sign of the problem.</p>
+
+<figure>
+<svg viewBox="0 0 720 132" role="img" aria-labelledby="ppTitle ppDesc" xmlns="http://www.w3.org/2000/svg">
+  <title id="ppTitle">Import search order in each pytest run</title>
+  <desc id="ppDesc">Python searches the plugin folder, then the worktree root, then the worktree's src folder, then the caller's own PYTHONPATH, and only then site-packages and editable-install finders.</desc>
+  <defs>
+    <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="svg-arrow"/>
+    </marker>
+  </defs>
+  <rect x="2" y="10" width="128" height="62" rx="5" class="svg-box"/>
+  <text x="66" y="37" text-anchor="middle" class="svg-t">plugin folder</text>
+  <text x="66" y="56" text-anchor="middle" class="svg-m">tsg_recorder</text>
+  <rect x="148" y="10" width="128" height="62" rx="5" class="svg-box-accent"/>
+  <text x="212" y="37" text-anchor="middle" class="svg-t">worktree root</text>
+  <text x="212" y="56" text-anchor="middle" class="svg-m">flat layout</text>
+  <rect x="294" y="10" width="128" height="62" rx="5" class="svg-box-accent"/>
+  <text x="358" y="37" text-anchor="middle" class="svg-t">worktree/src</text>
+  <text x="358" y="56" text-anchor="middle" class="svg-m">if it exists</text>
+  <rect x="440" y="10" width="128" height="62" rx="5" class="svg-box"/>
+  <text x="504" y="37" text-anchor="middle" class="svg-t">caller's path</text>
+  <text x="504" y="56" text-anchor="middle" class="svg-m">$PYTHONPATH</text>
+  <rect x="586" y="10" width="132" height="62" rx="5" class="svg-box"/>
+  <text x="652" y="37" text-anchor="middle" class="svg-t">site-packages</text>
+  <text x="652" y="56" text-anchor="middle" class="svg-m">installs, -e finders</text>
+  <line x1="20" y1="96" x2="700" y2="96" class="svg-line" marker-end="url(#ah2)"/>
+  <text x="20" y="120" class="svg-s">searched first</text>
+  <text x="700" y="120" text-anchor="end" class="svg-s">searched last, and the first match wins</text>
+</svg>
+<figcaption>Set by <code>runner.run_pytest</code>. It also sets <code>PYTHONDONTWRITEBYTECODE=1</code> so a stale <code>.pyc</code> file can't outlive the source swap, and <code>-p no:cacheprovider</code> so pytest writes no cache into the worktree.</figcaption>
+</figure>
+
+<p>The path covers the two usual layouts, and a check catches the rest. At the end of each run, <code>_misrouted_imports</code> lists every loaded module that came from outside the worktree and is either a project module or was loaded from the caller's checkout outside its virtualenv. A project module is one whose top-level name the worktree defines, which means a <code>.py</code> file or package at the root or in <code>src/</code>, or any top-level package elsewhere, such as <code>lib/mypkg</code>. The walk skips hidden folders and folders such as <code>tests</code>, <code>docs</code>, <code>vendor</code> and <code>build</code>. If the base run has any misrouted module, every base result becomes <span class="v i">INCONCLUSIVE</span> and the reason names the module and its path. At head a misrouted module only adds a warning.</p>
+
+<p>The check finds project packages by folder name, not from packaging metadata. It can therefore flag an unrelated dependency that happens to share a name with a folder in the checkout, which gives an inconclusive result rather than a false weak one. A namespace package (one without <code>__init__.py</code>) outside the root and <code>src/</code> is not recognized. In the evaluation the check never fired, across nine repositories with editable installs.</p>
+
+<h3>Deleted and missing files, and other inputs</h3>
+
+<ul>
+  <li>A data file the pull request adds under the patterns travels to base. The default pattern became <code>tests/**</code> after the first Codex review, instead of <code>tests/**/*.py</code>, for this reason.</li>
+  <li>A file that exists at head but is missing in the base run gives <span class="v i">INCONCLUSIVE</span>, with a reason that names the file and suggests a <code>--test-glob</code>.</li>
+  <li>A test-side file the pull request deletes is removed at base. Before <code>75f4da1</code>, a test that checked a fixture was gone failed at base on the stale file and came out strong.</li>
+  <li>A non-Python file outside the patterns that the pull request changes or deletes (docs left out) stays at its base version, because the gate can't know it is test data. When some verdict is strong, the report names each such file at the top and marks deleted ones "(deleted)". The verdict itself doesn't change, and <code>test_deleted_file_outside_the_patterns_is_named_at_the_top_of_the_report</code> pins that it stays strong.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="selection">Choosing tests with syntax trees</h2>
+
+<p>A test counts as added when its ID exists at head and not at base. A test that exists at both counts as modified when its fingerprint changed. The fingerprint is <code>ast.dump</code> of the function's syntax tree, which includes decorators and leaves out comments, blank lines and line numbers.</p>
+
+<pre><code>def function_fingerprint(source, parts):
+    ...
+    node, context = None, []
+    for name in parts:
+        node = next((n for n in body if isinstance(n, (ast.ClassDef, *_FUNCTIONS)) and n.name == name), None)
+        if node is None:
+            return None
+        if isinstance(node, ast.ClassDef):
+            context.append(_class_context(node))
+        body = node.body
+    if body and _is_docstring(body[0]):
+        node.body = body[1:]
+    return "\n".join([*context, ast.dump(node)])</code></pre>
+<p class="cap"><code>selection.py</code>. <code>parts</code> is the path inside the file, e.g. <code>["TestThing", "test_b"]</code>, with any parametrize suffix removed.</p>
+
+<ul>
+  <li><strong>Why syntax trees.</strong> Comparing collected test IDs misses an edited test, because it keeps its ID. Mapping diff hunks to line ranges flags a whitespace edit. A syntax tree ignores formatting and sees every change in logic.</li>
+  <li><strong>Docstrings don't count.</strong> On instructor #1857, a test whose only change was its docstring came out as a false weak, so the docstring is dropped.</li>
+  <li><strong>Class context counts.</strong> After the first Codex review, a test method's fingerprint also includes its class's decorators, bases and keywords, class-level statements such as <code>pytestmark</code>, setup and teardown methods, and autouse fixtures. It leaves out the other tests, plain helper methods, nested classes and the class docstring, so adding one test and one helper to a class doesn't re-judge all its old tests. Only a literal <code>autouse=True</code> is recognized.</li>
+  <li><strong>A known surprise.</strong> Adding one case to a <code>@pytest.mark.parametrize</code> list changes the decorator, so every old case of that test counts as modified and usually comes out weak. The behavior is kept and pinned by <code>test_f_new_parametrize_case_marks_old_cases_modified</code>, because comparing each case's values is much more work.</li>
+  <li><strong>Test file patterns.</strong> <code>_glob_to_regex</code> is a small matcher instead of <code>fnmatch</code>, whose <code>*</code> also matches <code>/</code>, and instead of <code>PurePath.full_match</code>, which needs Python 3.13. As in <code>.gitignore</code>, a pattern without a slash matches the file name in any folder.</li>
+  <li><strong>Renames.</strong> <code>--no-renames</code> turns a rename into a delete plus an add, so a renamed test file's tests count as new.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="action">The Action's base and head</h2>
+
+<p>On the <code>pull_request</code> event, <code>actions/checkout</code> checks out a merge commit that GitHub builds from the pull request's head and the current base branch. When the inputs are empty, the Action uses that merge commit's first parent as base and the merge commit itself as head.</p>
+
+<pre><code>if ! git rev-parse --verify --quiet 'HEAD^2' &gt;/dev/null; then
+  echo "::error::HEAD is not a merge commit. ..."
+  exit 1
+fi
+if [ -n "$PR_HEAD_SHA" ] &amp;&amp; [ "$(git rev-parse 'HEAD^2')" != "$PR_HEAD_SHA" ]; then
+  echo "::warning::The merge commit's second parent is not the PR head commit, ..."
+fi
+BASE_SHA="${BASE_SHA:-$(git rev-parse 'HEAD^1')}"
+HEAD_SHA="${HEAD_SHA:-$(git rev-parse HEAD)}"</code></pre>
+<p class="cap"><code>action.yml</code>, the "Run test-strength-gate" step.</p>
+
+<ul>
+  <li><strong>Why not <code>pull_request.base.sha</code>.</strong> The first plan used it. It is the base branch tip when the event fired, which may not be the commit the merge was built on. The diff from <code>HEAD^1</code> to <code>HEAD</code> is exactly the pull request's change on top of the base the merge used. DECISIONS.md entry 5 cites another project that counted tests from main as a pull request's own because of this.</li>
+  <li><strong>Why not <code>HEAD^2</code> as head.</strong> <code>HEAD^2</code> is the pull request's own head. A diff from <code>HEAD^1</code> to it would include main's newer changes, reversed. The merge commit is the code that would actually land.</li>
+  <li><strong>Why <code>fetch-depth: 2</code> is enough.</strong> <code>HEAD^1</code> is an ancestor of <code>HEAD</code>, so the gate's merge-base step returns <code>HEAD^1</code> without any more history. A test clones a merge commit with <code>--depth 2</code> to pin this.</li>
+  <li><strong>Why the gate still computes a merge-base.</strong> For callers who pass their own base, such as a base branch tip, diffing against the tip would pull in changes that landed on the base branch after the branch point.</li>
+</ul>
+
+<p>The Action is a composite action, so it runs in the caller's job with the Python and packages the caller already installed. It refuses to run under <code>pull_request_target</code>, which carries the base repository's secrets and a write token while running the pull request's code. Every input reaches the shell script through an environment variable, never by pasting <code>${{ inputs.* }}</code> into the script, so a crafted input can't inject shell commands. It needs no token and no write permission, which is all a pull request from a fork gets. The report goes to the job summary and to warning annotations. It is advisory by default, and <code>--fail-on weak</code> fails the step only when a test is weak and the pull request changes some Python source outside its tests.</p>
+
+<!-- ============================================================ -->
+<h2 id="eval">The evaluation</h2>
+
+<p>An agent searched GitHub for merged pull requests written by coding agents that touch Python source and a test file, add at least one test function, and change fewer than 500 lines. The gate ran on 8 of them, plus robocop #1764 as an extra case for non-Python fixtures. Each repository got its own virtualenv with an editable install. Base was the merge commit's first parent and head was the merge commit, and the gate ran with a clean environment. All nine were rerun on <code>75f4da1</code> on 9/25/26 for this page, and every verdict, reason and test ID matched the saved reports in <code>eval-reports/after-codex-round-2/</code>. Each rerun took 1.2 to 17.9 seconds of wall time.</p>
+
+<div class="wide">
+<table>
+  <thead><tr><th>Repository</th><th>PR</th><th>Agent</th><th class="n">Judged</th><th class="n">Strong</th><th class="n">Weak</th><th class="n">Inconcl.</th></tr></thead>
+  <tbody>
+    <tr><td>plumbum</td><td>#724</td><td>Copilot</td><td class="n">1</td><td class="n">1</td><td class="n">0</td><td class="n">0</td></tr>
+    <tr><td>pySigma</td><td>#553</td><td>Copilot</td><td class="n">4</td><td class="n">4</td><td class="n">0</td><td class="n">0</td></tr>
+    <tr><td>cachier</td><td>#279</td><td>Copilot</td><td class="n">3</td><td class="n">1</td><td class="n">2</td><td class="n">0</td></tr>
+    <tr><td>EvidenceForge</td><td>#316</td><td>Codex</td><td class="n">1</td><td class="n">1</td><td class="n">0</td><td class="n">0</td></tr>
+    <tr><td>verifiers</td><td>#836</td><td>Codex</td><td class="n">3</td><td class="n">0</td><td class="n">0</td><td class="n">3</td></tr>
+    <tr><td>semantic-chunkers</td><td>#55</td><td>Claude Code</td><td class="n">6</td><td class="n">5</td><td class="n">1</td><td class="n">0</td></tr>
+    <tr><td>OpenEnv</td><td>#1171</td><td>Cursor</td><td class="n">9</td><td class="n">7</td><td class="n">2</td><td class="n">0</td></tr>
+    <tr><td>instructor</td><td>#1857</td><td>Devin</td><td class="n">3</td><td class="n">1</td><td class="n">2</td><td class="n">0</td></tr>
+    <tr class="total"><td>8 pull requests</td><td></td><td></td><td class="n">30</td><td class="n">20</td><td class="n">7</td><td class="n">3</td></tr>
+    <tr><td>robocop (extra)</td><td>#1764</td><td>Copilot</td><td class="n">7</td><td class="n">4</td><td class="n">3</td><td class="n">0</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="cap">Nothing was skipped or broken at head. The agent for EvidenceForge and verifiers comes from the candidate search notes. The other seven match the local commit metadata.</p>
+
+<p>7 of the 30 judged tests (23%) passed at base without the source change, and 4 of the 8 pull requests had at least one such test. Of the 20 strong verdicts, 15 come from a failed check (11 assertions and 4 <code>pytest.raises</code> blocks that didn't raise), and 5 from another exception (EvidenceForge's and instructor's <code>ValueError</code>, OpenEnv's two <code>JSONDecodeError</code>s, and OpenEnv's <code>AttributeError</code> on a list).</p>
+
+<h3>The 3 weak tests that never reach the changed code</h3>
+
+<p>Every weak verdict was checked by hand, by reading the test next to the pull request's diff.</p>
+<ul>
+  <li><strong>cachier #279, two tests.</strong> Both are named after the regression, and neither runs <code>set_global_params</code> after decoration, as the walkthrough above shows against the base code.</li>
+  <li><strong>instructor #1857, <code>test_json_decode_error_caught_by_retry</code>.</strong> The pull request names this test as its regression test. The fix stops <code>_validate_model_from_json</code> from wrapping <code>json.JSONDecodeError</code> in a <code>ValueError</code>. According to the hand check, the test's scenario raises a Pydantic <code>ValidationError</code> at base before it reaches that line, and the test accepts either type with <code>assert isinstance(attempt.exception, (json.JSONDecodeError, ValidationError))</code>, so it passes with or without the fix.</li>
+</ul>
+<p>The other 4 weak tests are weak for an expected reason. One is a control for retry behavior that existed before (instructor), one checks an invariant the pull request didn't change (semantic-chunkers), and two constrain how the new code is written rather than what it fixes (OpenEnv). robocop's three weak tests check that bad values for a new option are rejected, and base rejects the whole unknown option, so they pass there.</p>
+<p>All 3 inconclusive verdicts (verifiers #836) are correct, because each test calls <code>EvalDisplay._display_max_concurrent</code>, a helper the pull request adds. They also show a limit of the method. The pull request changes the display code to call that helper, no test checks the display, and the report can't say so.</p>
+
+<h3>What the evaluation measures, and what it doesn't</h3>
+<ul>
+  <li>It measures whether each new test fails without the source change, on 30 tests from 8 pull requests, and a person agreed with every weak and inconclusive verdict.</li>
+  <li>It does not give a rate for agent pull requests in general. The sample is small and was chosen by a search with fixed filters.</li>
+  <li>It does not show that a strong test checks the right behavior, or checks it thoroughly. Strong only means the test depends on the change.</li>
+  <li>The strong verdicts were checked by their failure reasons, not by rereading every test. Four robocop strong verdicts were right for a partly wrong reason, because base rejected the new option before any behavior was checked.</li>
+  <li>It does not measure false strong verdicts from changed inputs, because no evaluation pull request changes or deletes a non-Python file outside the patterns, other than docs. The changed-inputs note never appeared.</li>
+  <li>It does not measure flakiness. Each test ran once per run, although every rerun gave the same verdicts.</li>
+  <li>It ran through the CLI with <code>HEAD^1</code> and <code>HEAD</code>, not through the Action in a GitHub workflow.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="codex">Three rounds of Codex review</h2>
+
+<p>After the evaluation, OpenAI's Codex reviewed the code read-only three times in a row, and ran the suite on an exported copy each time. Claude checked each finding against the code, in most cases by reproducing it in a scratch repository, and fixed each confirmed one with one commit and a regression test. The evaluation was rerun after each round, and no rerun changed a verdict. Running the current 110 tests against the spike's source at <code>c425c42</code> gives 32 failures, including the regression test for each code fix from the three rounds.</p>
+
+<div class="wide">
+<table>
+  <thead><tr><th>Round</th><th>What Codex found</th><th>What changed</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>1. Review of the spike (75 tests)</td>
+      <td>Codex made nine findings. The most severe were a missing data fixture called strong, "any other exception is strong" being too broad, and an installed <code>lib/</code> package that the misroute check missed.</td>
+      <td>Six fixes: the fixture false strong (<code>44bd346</code>), bare assertions hiding the cause (<code>a02d961</code>), the <code>lib/</code> install (<code>4adb809</code>), class-level edits (<code>a1e406e</code>), test files that fail to import at head disappearing from the report (<code>9196923</code>), and README wording (<code>47a1fe6</code>). The strong rule stayed, and its reason gained where the exception was raised (<code>9363320</code>). A project-origin argument TypeError stayed inconclusive, with a reason that says the cause is unclear (<code>2602232</code>). The README now says Linux and macOS only, and a local test runs the Action's script (<code>78e64c7</code>). Codex's reason for ruling out Windows was wrong, because GitHub's Windows runners have bash.</td>
+    </tr>
+    <tr>
+      <td>2. Re-review (100 tests)</td>
+      <td>The round 1 fixes held. It asked for four more things, which were a <code>UnicodeDecodeError</code> crash on a binary fixture, timeouts at head reported as broken, the strong label still reading as proof, and a legend that said every row ran twice.</td>
+      <td>The existence check uses <code>git cat-file -e</code> (<code>8279f2a</code>), a head run that fails as a whole gives inconclusive rows (<code>76806e2</code>), and the legend is corrected (<code>5964dea</code>). The strong rule changed in wording only, with the conditional reason and the changed-inputs note (<code>752f278</code>). A run in a GitHub workflow is still open.</td>
+    </tr>
+    <tr>
+      <td>3. Re-review, round 2 (107 tests)</td>
+      <td>Codex found one new false strong, rated high. A fixture the pull request deletes under the patterns stayed in the base run, and the changed-inputs note left deletions out.</td>
+      <td>Fixed in <code>75f4da1</code>: deleted test-side files are removed at base, and deleted inputs outside the patterns are named. Codex accepted keeping the strong rule as an explicit trade-off, and noted that a changed <code>.py</code> helper or a docs file outside the patterns can still change a result without a note. Both are left to Adam. No Codex review has checked <code>75f4da1</code>.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>Two of Codex's proposals were rejected with evidence. Making every non-assertion exception inconclusive would have been wrong on all 5 such verdicts in the evaluation. Showing the last stderr line for a bare assertion would have shown the wrong line on robocop, because the triage found that its stderr ends with the last item of a list of accepted arguments. The code picks the last line that names an error instead.</p>
+
+<!-- ============================================================ -->
+<h2 id="limits">What it does not do, and open issues</h2>
+
+<h3>Out of scope for v0</h3>
+<ul>
+  <li>It supports only Python and pytest, on Linux and macOS runners.</li>
+  <li>It doesn't judge whether a strong test checks the right behavior or checks it thoroughly.</li>
+  <li>It is not mutation testing. It makes exactly one change, putting back the old source, instead of hundreds of generated ones.</li>
+  <li>It doesn't post pull request comments, retry flaky tests, or block by default.</li>
+  <li>It doesn't judge a test whose only change is in a fixture it uses, unless that fixture is an autouse fixture or setup method in the test's own class.</li>
+  <li><code>--fail-on weak</code> fails only on weak tests. Broken and inconclusive tests never fail the step.</li>
+</ul>
+
+<h3>Open issues</h3>
+<ul>
+  <li><strong>Strong from another exception is a heuristic.</strong> A data file the pull request changes outside the patterns stays at its old version at base, and a test can fail there with a <code>KeyError</code> unrelated to the source change and come out strong. The same can happen with a plain assertion. The report names such files, but a reader who skips the reason can overrate the verdict.</li>
+  <li><strong>An argument TypeError inside the old code</strong> stays inconclusive, although it may have caught a behavioral bug.</li>
+  <li><strong>A test of a new helper can't show the helper is used</strong>, as in verifiers #836. The line for the README's limits is not written yet.</li>
+  <li><strong>The Action has never run in a GitHub workflow.</strong> Its shell step runs in a local test against a <code>--depth 2</code> clone of a merge commit, and <code>examples/action-integration.yml</code> has not run. The tool's own CI passed on GitHub for <code>75f4da1</code>, on Linux and macOS with Python 3.10 and 3.13.</li>
+  <li><strong>No review of the last fix.</strong> Codex has not checked <code>75f4da1</code>.</li>
+  <li><strong>Environment gaps.</strong> Compiled extensions aren't rebuilt at base. A pull request that adds a dependency means the base run uses head's installed packages. A namespace package outside the root and <code>src/</code> is not recognized as project code.</li>
+  <li><strong>Inputs the note leaves out.</strong> Docs (<code>.md</code>, <code>.rst</code>, and files under <code>docs/</code> and <code>.github/</code>) are left out of the changed-inputs note, and a <code>.py</code> helper outside the patterns counts as source.</li>
+  <li><strong>A conftest.py that fails to load at head</strong> gives inconclusive rows, although it is often a break in the pull request.</li>
+  <li><strong>Fixed limits.</strong> Each pytest run has a 900-second limit set in code, and a gate makes up to four runs. pytest-xdist is untested. Flaky tests can land in any bucket.</li>
+  <li><strong>No license</strong> is set.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="calls">Calls left to Adam</h2>
+
+<h3>The STRONG label for exceptions other than a check</h3>
+<p>The counts are for the 8 evaluation pull requests, computed from the recorded exception types. With robocop added, the strong counts are 24, 19 and 19, because robocop's four strong verdicts are all assertions.</p>
+<div class="wide">
+<table>
+  <thead><tr><th>Option</th><th class="n">Strong</th><th class="n">New label</th><th class="n">Weak</th><th class="n">Inconcl.</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td>Keep the label, with the conditional reason and the changed-inputs note (the current code)</td><td class="n">20</td><td class="n">0</td><td class="n">7</td><td class="n">3</td><td>Loses nothing, but a reader who skips the reason can overrate the 5 verdicts that rest on another exception.</td></tr>
+    <tr><td>A sixth verdict, e.g. "fails at base, inspect cause"</td><td class="n">15</td><td class="n">5</td><td class="n">7</td><td class="n">3</td><td>A reviewer sees at a glance which strong verdicts rest on a failed check. The report, legend, JSON counts and summary line all change, and <code>--fail-on</code> needs a rule for it.</td></tr>
+    <tr><td>Inconclusive by default</td><td class="n">15</td><td class="n">0</td><td class="n">7</td><td class="n">8</td><td>Never overstates, but on this sample it is wrong 5 times out of 5.</td></tr>
+  </tbody>
+</table>
+</div>
+<p>The design doc recommends keeping the current label and revisiting after about 20 more pull requests. If the label itself should carry the doubt, the sixth verdict keeps the evidence and moves no correct verdict to inconclusive.</p>
+
+<h3>The first real GitHub workflow run</h3>
+<p>Nothing in the repository should claim the Action works in GitHub until it has run there. The plan is a small demo repository with one pull request that has a strong, a weak and an inconclusive test, and then a check of the job summary and the annotations. Moving <code>examples/action-integration.yml</code> into <code>.github/workflows/</code> is a smaller step toward the same goal, but it can't cover a pull request from a fork.</p>
+
+<h3>Smaller calls</h3>
+<ul>
+  <li>How much to rewrite by hand before calling the code his own, and when the repository turns public.</li>
+  <li>Whether to compare the called function's signature at base and head, so that an argument TypeError from the old code can become strong.</li>
+  <li>Whether to repair a misrouted install by putting a folder such as <code>lib/</code> on <code>PYTHONPATH</code>, instead of marking the base run inconclusive.</li>
+  <li>Whether a <code>conftest.py</code> import error at head should be broken rather than inconclusive.</li>
+  <li>Whether the changed-inputs note should also name <code>.py</code> helpers in folders such as <code>testing/</code>.</li>
+  <li>Keeping <code>tests/**</code> as a default pattern (recommended), a license (MIT is the usual choice), and the name.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="disagree">Where the docs and the code disagreed</h2>
+<p>Writing this page found the five disagreements below, and commit <code>1a0b055</code> corrected README.md, DECISIONS.md, the <code>gitutil.changed_files</code> docstring and the design doc to match the code. The details stay here because they describe what the code does. Only the timing figures in the last item were left as they were. None of these changes a verdict in the evaluation.</p>
+<ul>
+  <li><strong>AttributeError owners.</strong> The design doc says an attribute missing on "a module, class or project object" means a missing API. The code treats any object whose type isn't a builtin as a missing API, including a third-party library's object, and it also treats an <code>AttributeError</code> with no <code>.obj</code> information (raised by hand, or by <code>monkeypatch</code>) as a missing API.</li>
+  <li><strong>Which files pytest runs.</strong> The design doc says the gate runs pytest on the changed test files. The collect-only runs do use every changed <code>.py</code> test file except <code>conftest.py</code>, but the judging runs use only the files that hold a judged test.</li>
+  <li><strong>Where the exception was raised.</strong> The design doc's first goal says each row shows where the exception was raised. The markdown reason shows it only for a strong verdict from another exception, an unclear argument TypeError, and a bare assertion. The JSON report has it for every failure.</li>
+  <li><strong>The stderr hint.</strong> The design doc says the hint is the last stderr line that names an error. The code falls back to the last stderr line when no line names an error, and the reason shows at most 120 characters of the hint and 80 of the source line, although the plugin keeps 200.</li>
+  <li><strong>Deleted files.</strong> DECISIONS.md entry 3 and the docstring of <code>gitutil.changed_files</code> said deleted test files are ignored. Since <code>75f4da1</code>, deleted test-side files are removed from the base run, and both now say so.</li>
+  <li><strong>Timing.</strong> The design doc says each pull request took 1 to 16 seconds. The rerun on 9/25/26 took 1.2 to 17.9 seconds of wall time, including Python startup, and the test suite took 21.8 seconds rather than the doc's "about 25".</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="order">The order to read the code</h2>
+<p>The first Codex review listed which files to rewrite by hand first, and the design doc agrees. Before reading, run <code>.venv/bin/python examples/demo.py</code> from the repository, which builds a toy repository and shows one strong, one weak and one inconclusive test.</p>
+<ol>
+  <li><code>classify.py</code>. The rules here are the judgment calls an interviewer will probe. Be able to say which exception gives which verdict, and why the head checks come first.</li>
+  <li><code>plugin/tsg_recorder.py</code>. The pytest hooks, the exception fields, the output capture for bare assertions, and the misroute check. The design doc calls it the most subtle runtime code.</li>
+  <li><code>runner.py</code>. The subprocess environment, the handoff of selected IDs, the timeout, and when a run counts as failed as a whole.</li>
+  <li><code>selection.py</code>. What counts as a changed test, and which class context is left out.</li>
+  <li><code>gate.py</code>. The order of the steps, what travels to base, and where the file rows come from.</li>
+  <li><code>gitutil.py</code>, <code>report.py</code>, <code>cli.py</code> and <code>action.yml</code>, which are short and mostly mechanical.</li>
+</ol>
+<p>For each module, read the tests that pin it. <code>tests/test_units.py</code> covers the rules, <code>tests/test_scenarios.py</code> runs one scenario repository that produces every verdict, <code>tests/test_cli.py</code> has one end-to-end test per bug fix, and <code>tests/test_action.py</code> runs the Action's shell step.</p>
+
+<!-- ============================================================ -->
+<h2 id="quiz">Ten questions to answer without notes</h2>
+<p>Click a question to see the answer.</p>
+
+<details>
+<summary>1. Isn't this just mutation testing?</summary>
+<div><p>It is mutation testing with exactly one mutant, and that mutant is the reverse of the pull request's own source change. So it costs one extra test run instead of hundreds, and it answers a narrower question, which is whether this test depends on this change. A strong test can still miss many other bugs, so a team could use both.</p></div>
+</details>
+
+<details>
+<summary>2. Why not use coverage of the changed lines?</summary>
+<div><p>A test can run every changed line and assert nothing, and coverage can't see that. The gate asks whether the test's outcome changes when the change is missing, which is what a reviewer wants to know.</p></div>
+</details>
+
+<details>
+<summary>3. How does it avoid calling a test strong when it only imports a function that doesn't exist yet?</summary>
+<div><p><code>ImportError</code>, <code>ModuleNotFoundError</code> and <code>NameError</code> are inconclusive. So is an <code>AttributeError</code> on a module, a class, or any non-builtin object, which the plugin reads from the exception's <code>.obj</code>. An argument <code>TypeError</code>, such as "unexpected keyword argument", is inconclusive too. A test must also pass at head, or it is broken at head.</p></div>
+</details>
+
+<details>
+<summary>4. Is "any other exception is strong" safe?</summary>
+<div><p>Not always. It is a heuristic that is right when the old code caused the exception. A data file the pull request changes outside the test patterns stays old at base and can make a test fail for an unrelated reason. On the evaluation, making every other exception inconclusive would have been wrong on all 5 such verdicts, so the rule stayed, the reason now says where the exception was raised and to inspect the cause, and the report names changed files outside the patterns. The label itself is an open call.</p></div>
+</details>
+
+<details>
+<summary>5. Why does the runner pass whole files to pytest instead of the judged test IDs?</summary>
+<div><p>If one ID on the command line doesn't exist, pytest exits with code 4 and runs nothing, so one test that is new at head would wipe out the base run. The runner passes files with <code>--continue-on-collection-errors</code>, and the plugin deselects every test not on the list in <code>pytest_collection_modifyitems</code>. A judged test missing at base becomes inconclusive with "Not collected at base".</p></div>
+</details>
+
+<details>
+<summary>6. How do you know the base run tested base code and not an installed copy of head?</summary>
+<div><p>The runner puts the worktree root and its <code>src/</code> at the front of <code>PYTHONPATH</code>, ahead of site-packages and editable-install finders, and turns off <code>.pyc</code> writing. Then the plugin lists project modules that loaded from outside the worktree. If the base run has any, every base result is inconclusive and the reason names the module and path. After Codex round 1, any top-level package in the worktree, such as <code>lib/mypkg</code>, counts as project code.</p></div>
+</details>
+
+<details>
+<summary>7. Why does the Action use the merge commit's first parent as base and the merge commit as head?</summary>
+<div><p>The merge commit is exactly the code that would land, and the diff from its first parent is exactly the pull request's change on top of the base the merge used. <code>pull_request.base.sha</code> can be stale. Using <code>HEAD^2</code> as head would put main's newer changes into the diff, reversed. Because <code>HEAD^1</code> is an ancestor of <code>HEAD</code>, <code>fetch-depth: 2</code> is enough for the merge-base step.</p></div>
+</details>
+
+<details>
+<summary>8. How does it decide a test was modified, and what is the parametrize surprise?</summary>
+<div><p>It compares <code>ast.dump</code> of the test function at base and head, which ignores comments, formatting and line numbers, with the docstring dropped. For a method, it adds the class's decorators, bases, class-level statements, setup and teardown methods, and autouse fixtures. Adding one case to a <code>parametrize</code> list changes the decorator, so every old case counts as modified and usually comes out weak.</p></div>
+</details>
+
+<details>
+<summary>9. What did the evaluation find, and what doesn't it show?</summary>
+<div><p>On 30 new tests from 8 merged agent-written pull requests, 7 passed without the source change, in 4 of the pull requests. A hand check found 3 of the 7 never reach the changed code, including instructor's named regression test, and two cachier tests named after the regression. It doesn't show a general rate, doesn't show that strong tests check the right behavior, and never exercised the changed-inputs case or a GitHub workflow run.</p></div>
+</details>
+
+<details>
+<summary>10. How did you check code that an AI wrote, and why is the gate advisory by default?</summary>
+<div><p>A second model, Codex, reviewed it in three rounds. It found six more bugs, including a false strong from a deleted fixture, each fix has a regression test, and a rerun of the evaluation after each round changed no verdict. One Codex proposal was rejected with the evaluation's numbers. The gate is advisory because refactors and tests of existing behavior are legitimately weak, and a gate that blocks correct work gets turned off, so it shows its evidence and lets a reviewer decide.</p></div>
+</details>
+
+<footer>
+<p>Sources: the code at <code>75f4da1</code>, a fresh run of its 110 tests, a fresh evaluation rerun, the design doc on the Desktop, and the notes in <code>~/dev/test-strength-gate-notes/</code>.</p>
+</footer>
+
+</main>
+<script>
+window.addEventListener("beforeprint", function () {
+  document.querySelectorAll("details").forEach(function (d) { d.dataset.wasOpen = d.open ? "1" : ""; d.open = true; });
+});
+window.addEventListener("afterprint", function () {
+  document.querySelectorAll("details").forEach(function (d) { d.open = d.dataset.wasOpen === "1"; });
+});
+</script>
+</body>
+</html>
