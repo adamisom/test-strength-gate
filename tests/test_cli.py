@@ -250,3 +250,20 @@ def test_argument_type_error_inside_the_old_code_says_the_cause_is_unclear(repo)
     assert (test.verdict, test.base.origin) == (INCONCLUSIVE, "project")
     assert "inside the base code at lib.py:5" in test.reason
     assert "usually means the new API" not in test.reason
+
+
+def test_bare_assertion_reason_shows_the_line_and_the_stderr_error(repo):
+    # Codex review finding 4, the robocop case in small: the check lives in a
+    # helper pytest doesn't rewrite, so its AssertionError has no message, and
+    # the real cause is the old CLI rejecting the new option on stderr.
+    cli_base = ("import sys\n\ndef main(args):\n    for a in args:\n        if a != '--x':\n"
+                "            print(f'error: unknown option {a}', file=sys.stderr)\n            return 2\n    return 0\n")
+    base = repo.commit({"cli.py": cli_base, "support/__init__.py": "",
+                        "support/check.py": "def expect_code(got, want):\n    assert got == want\n"})
+    head = repo.commit({"cli.py": cli_base.replace("if a != '--x'", "if a not in ('--x', '--new')"),
+                        "tests/test_cli.py": "import cli\nfrom support.check import expect_code\n\n"
+                        "def test_new_option():\n    expect_code(cli.main(['--new']), 0)\n"})
+    [test] = repo.gate(base, head).tests
+    assert test.verdict == STRONG
+    assert "no message, at support/check.py:2: `assert got == want`" in test.reason
+    assert "Last error on stderr: error: unknown option --new" in test.reason

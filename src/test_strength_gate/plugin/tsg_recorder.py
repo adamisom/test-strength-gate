@@ -14,12 +14,15 @@ The JSON has four keys:
   items           IDs of collected (and selected) tests
   collect_errors  {file: last error line} for files that failed to import
   results         {id: {phase: {outcome, exc_type, message, attr_owner, missing_path,
-                                raised_at, raised_inside, local_at, xfail}}}
+                                raised_at, raised_inside, local_at, source_line,
+                                stderr_hint, xfail}}}
   misrouted       {module: path} for project modules imported from outside the worktree
 """
 
 import json
+import linecache
 import os
+import re
 import sys
 import types
 from pathlib import Path
@@ -144,9 +147,32 @@ def _locations(exc):
             local = innermost
         tb = tb.tb_next
     if innermost is None:
-        return {"raised_at": None, "raised_inside": False, "local_at": None}
+        return {"raised_at": None, "raised_inside": False, "local_at": None, "local_frame": None}
     return {"raised_at": _where(*innermost), "raised_inside": _inside(innermost[0]),
-            "local_at": _where(*local) if local else None}
+            "local_at": _where(*local) if local else None, "local_frame": local}
+
+
+_ERROR_LINE = re.compile(r"error|exception|traceback", re.IGNORECASE)
+
+
+def _bare_assertion_hints(exc, local_frame, report):
+    """For an AssertionError with no message, the failing line and a stderr hint.
+
+    pytest rewrites asserts only in test modules and conftest.py, so a bare
+    assert in a helper fails with an empty message, and the report would only
+    say "AssertionError". The source line of the innermost frame in the
+    worktree shows what was checked. The last captured stderr line that names
+    an error, or else the last line, often shows why (e.g. an unknown option
+    rejected by a CLI). Both are cut to 200 characters, and nothing else from
+    the captured output is kept.
+    """
+    if not isinstance(exc.value, AssertionError) or str(exc.value):
+        return {"source_line": None, "stderr_hint": None}
+    source = linecache.getline(*local_frame).strip()[:200] if local_frame else ""
+    lines = [ln.strip() for ln in (getattr(report, "capstderr", "") or "").splitlines() if ln.strip()]
+    errors = [ln for ln in lines if _ERROR_LINE.search(ln)]
+    hint = (errors or lines or [""])[-1][:200]
+    return {"source_line": source or None, "stderr_hint": hint or None}
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -157,13 +183,16 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     report = outcome.get_result()
     exc = call.excinfo
+    where = _locations(exc) if exc else {}
+    local_frame = where.pop("local_frame", None)
     report.user_properties.append(("tsg", {
         "id": _canonical_id(item.path, item.nodeid),
         "exc_type": exc.type.__name__ if exc else None,
         "message": str(exc.value)[:500] if exc else None,
         "attr_owner": _attr_owner(exc.value) if exc else None,
         "missing_path": _missing_path(exc.value) if exc else None,
-        **(_locations(exc) if exc else {}),
+        **where,
+        **(_bare_assertion_hints(exc, local_frame, report) if exc else {}),
         "xfail": hasattr(report, "wasxfail"),
     }))
 
@@ -182,6 +211,8 @@ def pytest_runtest_logreport(report):
         "raised_at": info.get("raised_at"),
         "raised_inside": info.get("raised_inside", False),
         "local_at": info.get("local_at"),
+        "source_line": info.get("source_line"),
+        "stderr_hint": info.get("stderr_hint"),
         "xfail": info["xfail"],
     }
 

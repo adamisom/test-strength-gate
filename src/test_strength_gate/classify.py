@@ -86,6 +86,8 @@ class Outcome:
     raised_inside: bool = False  # that frame is a file in the worktree, not a library
     local_at: str = ""       # "path:line" of the last frame in the worktree
     origin: str = ""         # set by the gate from raised_at: test, project, library
+    source_line: str = ""    # for an AssertionError with no message: the failing line
+    stderr_hint: str = ""    # ... and the last captured stderr line that names an error
 
     def location(self):
         """Where the exception came from, for the reason text."""
@@ -125,7 +127,8 @@ def summarize(phases, collect_error=None, startup_error=None):
             return Outcome(status, phase, rec.get("exc_type") or "", rec.get("message") or "",
                            rec.get("attr_owner") or "", rec.get("missing_path") or "",
                            raised_at=rec.get("raised_at") or "", raised_inside=bool(rec.get("raised_inside")),
-                           local_at=rec.get("local_at") or "")
+                           local_at=rec.get("local_at") or "", source_line=rec.get("source_line") or "",
+                           stderr_hint=rec.get("stderr_hint") or "")
     return Outcome("passed", "call")
 
 
@@ -168,7 +171,19 @@ def verdict(base, head):
                               f"{base.raised_at}. The test may call a new API, or the old code may call something "
                               f"wrongly, which would be a real failure: {_short(base.message)}")
     if kind == "assertion":
-        return STRONG, f"Fails at base on a check: {_short(base.message) or base.exc_type}"
+        if base.message.strip():
+            return STRONG, f"Fails at base on a check: {_short(base.message)}"
+        # A bare assert (often in a helper pytest doesn't rewrite) says nothing
+        # by itself, and the real cause can be a missing API further up, e.g.
+        # a CLI rejecting a new option. Show the line and any stderr error.
+        reason = "Fails at base on a check that has no message"
+        if base.local_at:
+            reason += f", at {base.local_at}"
+        if base.source_line:
+            reason += f": `{_short(base.source_line, 80)}`"
+        if base.stderr_hint:
+            reason += f". Last error on stderr: {_short(base.stderr_hint, 120)}"
+        return STRONG, reason + "."
     if kind == "missing_api":
         return INCONCLUSIVE, (f"Fails at base with {base.exc_type}, which usually means the new API "
                               f"doesn't exist yet: {_short(base.message)}")
