@@ -18,6 +18,10 @@ BASE_FILES = {
 
         def sign(x):
             return 1 if x > 0 else -1  # bug: sign(0) should be 0
+
+        def find_word(text, word):
+            i = text.find(word)
+            return None if i <= 0 else text[i:i + len(word)]  # bug: misses index 0
     """,
     "tests/test_calc.py": """
         import pytest
@@ -52,6 +56,10 @@ HEAD_FILES = {
             if x == 0:
                 return 0
             return 1 if x > 0 else -1
+
+        def find_word(text, word):
+            i = text.find(word)
+            return None if i < 0 else text[i:i + len(word)]
 
         def mul(a, b):
             return a * b
@@ -93,6 +101,12 @@ HEAD_FILES = {
         def test_mul():
             from calc import mul
             assert mul(2, 3) == 6
+
+        def test_mul_attribute():
+            assert calc.mul(2, 3) == 6
+
+        def test_find_word_at_start():
+            assert calc.find_word("hello world", "hello").upper() == "HELLO"
 
         def test_add_three():
             assert calc.add(1, 2, c=3) == 6
@@ -150,6 +164,17 @@ def test_b_passing_at_base_is_weak(by_id):
 def test_c_importing_a_missing_function_is_inconclusive(by_id):
     check(by_id, "test_calc.py::test_mul", INCONCLUSIVE)
     assert by_id["test_calc.py::test_mul"].base.exc_type == "ImportError"
+
+
+def test_c_missing_module_attribute_is_inconclusive(by_id):
+    check(by_id, "test_calc.py::test_mul_attribute", INCONCLUSIVE)
+    assert by_id["test_calc.py::test_mul_attribute"].base.attr_owner == "module"
+
+
+def test_attribute_error_on_none_is_behavior_so_strong(by_id):
+    t = by_id["test_calc.py::test_find_word_at_start"]
+    check(by_id, "test_calc.py::test_find_word_at_start", STRONG)
+    assert (t.base.exc_type, t.base.attr_owner) == ("AttributeError", "builtin")
 
 
 def test_c_new_keyword_argument_is_inconclusive(by_id):

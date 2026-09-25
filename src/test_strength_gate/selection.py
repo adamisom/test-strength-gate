@@ -50,9 +50,8 @@ def matches_any(path, globs):
 
 def split_test_id(test_id):
     """'tests/t.py::TestA::test_b[1-2]' -> ('tests/t.py', ['TestA', 'test_b'])."""
-    file, *parts = test_id.split("::")
-    if parts:
-        parts[-1] = parts[-1].split("[", 1)[0]  # drop the parametrize suffix
+    # Drop the parametrize suffix first; its values may themselves contain "::".
+    file, *parts = test_id.split("[", 1)[0].split("::")
     return file, parts
 
 

@@ -8,24 +8,25 @@ Settings come from environment variables:
   TSG_OUT            where to write the JSON (required)
   TSG_ROOT           the worktree root; IDs are made relative to it
   TSG_SELECT         optional JSON list of IDs; every other test is deselected
-  TSG_ORIGINAL_REPO  optional path; imports from here mean the worktree was bypassed
+  TSG_ORIGINAL_REPO  optional path of the real checkout, to spot imports from it
 
 The JSON has four keys:
   items           IDs of collected (and selected) tests
   collect_errors  {file: last error line} for files that failed to import
-  results         {id: {phase: {outcome, exc_type, message}}}
-  leaked_imports  modules loaded from TSG_ORIGINAL_REPO instead of the worktree
+  results         {id: {phase: {outcome, exc_type, message, attr_owner, xfail}}}
+  misrouted       {module: path} for project modules imported from outside the worktree
 """
 
 import json
 import os
 import sys
+import types
 from pathlib import Path
 
 import pytest
 
 _ROOT = Path(os.environ.get("TSG_ROOT", ".")).resolve()
-_data = {"items": [], "collect_errors": {}, "results": {}, "leaked_imports": []}
+_data = {"items": [], "collect_errors": {}, "results": {}, "misrouted": {}}
 _config = None
 
 
@@ -76,6 +77,25 @@ def pytest_collectreport(report):
     _data["collect_errors"][_canonical_id(path, "")] = message
 
 
+def _attr_owner(exc):
+    """For an AttributeError, what kind of object lacked the attribute.
+
+    Python 3.10+ sets .name and .obj when attribute lookup fails. They are
+    unset (name is None) when code raises AttributeError itself, as
+    monkeypatch and mock.patch do.
+    """
+    if not isinstance(exc, AttributeError) or getattr(exc, "name", None) is None:
+        return None
+    obj = exc.obj
+    if isinstance(obj, types.ModuleType):
+        return "module"
+    if isinstance(obj, type):
+        return "class"
+    if type(obj).__module__ == "builtins":  # None, str, int, dict, ...
+        return "builtin"
+    return "object"
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     # The exception type is only available here, on the worker that ran the
@@ -88,6 +108,7 @@ def pytest_runtest_makereport(item, call):
         "id": _canonical_id(item.path, item.nodeid),
         "exc_type": exc.type.__name__ if exc else None,
         "message": str(exc.value)[:500] if exc else None,
+        "attr_owner": _attr_owner(exc.value) if exc else None,
         "xfail": hasattr(report, "wasxfail"),
     }))
 
@@ -101,35 +122,46 @@ def pytest_runtest_logreport(report):
         "outcome": report.outcome,
         "exc_type": info["exc_type"],
         "message": info["message"],
+        "attr_owner": info["attr_owner"],
         "xfail": info["xfail"],
     }
 
 
-def _leaked_imports():
-    """Modules imported from the original checkout instead of the worktree.
+def _misrouted_imports():
+    """Project modules that were imported from outside the worktree.
 
-    An editable install (pip install -e .) points at the original checkout,
-    so the base run could silently test head code. Installed packages under
-    sys.prefix are fine, even when the venv lives inside the repo.
+    If the project is installed (pip install . or pip install -e .), its
+    modules can load from site-packages or from the real checkout instead of
+    the worktree, and then the base run tests head code. A project module is
+    one whose top-level name exists at the worktree root or in src/, or any
+    module loaded from the real checkout outside its virtualenv.
     """
     original = os.environ.get("TSG_ORIGINAL_REPO")
-    if not original:
-        return []
-    original = Path(original).resolve()
+    original = Path(original).resolve() if original else None
     prefixes = {Path(sys.prefix).resolve(), Path(sys.base_prefix).resolve()}
-    leaked = set()
+    local = set()
+    for folder in (_ROOT, _ROOT / "src"):
+        if folder.is_dir():
+            local |= {p.stem for p in folder.glob("*.py")}
+            local |= {p.parent.name for p in folder.glob("*/__init__.py")}
+    found = {}
     for name, module in list(sys.modules.items()):
         file = getattr(module, "__file__", None)
         if not file:
             continue
         path = Path(file).resolve()
-        if path.is_relative_to(original) and not any(path.is_relative_to(p) for p in prefixes):
-            leaked.add(name.split(".")[0])
-    return sorted(leaked)
+        if path.is_relative_to(_ROOT):
+            continue
+        top = name.split(".")[0]
+        from_checkout = (original is not None and path.is_relative_to(original)
+                         and not any(path.is_relative_to(p) for p in prefixes))
+        if top in local or from_checkout:
+            found.setdefault(top, str(path))
+    return found
 
 
 def pytest_sessionfinish(session):
     if hasattr(session.config, "workerinput"):  # an xdist worker; the main process writes
         return
-    _data["leaked_imports"] = _leaked_imports()
+    _data["misrouted"] = _misrouted_imports()
     Path(os.environ["TSG_OUT"]).write_text(json.dumps(_data, indent=2))

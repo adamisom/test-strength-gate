@@ -52,6 +52,13 @@ def main(argv=None):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
             f.write(markdown)
 
-    if args.fail_on == "weak" and any(t.verdict == WEAK for t in result.tests):
+    weak = [t for t in result.tests if t.verdict == WEAK]
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        for t in weak:  # shows as a warning on the PR's Files tab
+            print(f"::warning file={t.id.split('::')[0]},title=Weak test::"
+                  f"{t.id} passes without the source change")
+
+    # A tests-only PR has no source change to catch, so its weak tests don't fail the gate.
+    if args.fail_on == "weak" and weak and result.pr_kind != "tests_only":
         return 1
     return 0

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 from . import gitutil
-from .classify import summarize, verdict, Outcome
+from .classify import BROKEN_AT_HEAD, SKIPPED, WEAK, Outcome, summarize, verdict
 from .runner import run_pytest
 from .selection import DEFAULT_GLOBS, matches_any, pick_judged
 
@@ -22,25 +22,48 @@ class JudgedTest:
 
 @dataclass
 class GateResult:
-    base: str        # the merge-base actually used
+    base: str        # the commit actually used as base (normally the merge-base)
     head: str
     test_files: list = field(default_factory=list)
+    source_files: list = field(default_factory=list)  # changed .py files that are not tests
     tests: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
+
+    @property
+    def pr_kind(self):
+        """'tests_only', 'all_weak' (looks like a refactor), or 'normal'."""
+        if not self.source_files:
+            return "tests_only"
+        judged = [t for t in self.tests if t.verdict not in (SKIPPED, BROKEN_AT_HEAD)]
+        if judged and all(t.verdict == WEAK for t in judged):
+            return "all_weak"
+        return "normal"
+
+
+def _misrouted_message(misrouted):
+    return "; ".join(f"`{module}` came from {path}" for module, path in misrouted.items())
 
 
 def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
     repo = Path(repo).resolve()
     globs = globs or DEFAULT_GLOBS
     head_sha = gitutil.resolve(repo, head)
+    base_sha = gitutil.resolve(repo, base)
+    result = GateResult(base=base_sha, head=head_sha)
     # Judge the PR against the point where it branched off, like GitHub's
     # PR diff. Diffing against the base branch tip would pull in changes
     # that landed on the base branch after the PR was opened.
-    base_sha = gitutil.merge_base(repo, gitutil.resolve(repo, base), head_sha)
-    result = GateResult(base=base_sha, head=head_sha)
+    try:
+        result.base = base_sha = gitutil.merge_base(repo, base_sha, head_sha)
+    except gitutil.GitError:
+        result.warnings.append("No merge-base found (shallow clone?), so the base commit is used as given.")
 
-    result.test_files = [path for status, path in gitutil.changed_files(repo, base_sha, head_sha)
-                         if status != "D" and matches_any(path, globs)]
+    for status, path in gitutil.changed_files(repo, base_sha, head_sha):
+        if matches_any(path, globs):
+            if status != "D":
+                result.test_files.append(path)
+        elif path.endswith(".py"):
+            result.source_files.append(path)
     # conftest.py files are copied to base, but they hold no tests to collect.
     targets = [p for p in result.test_files if PurePosixPath(p).name != "conftest.py"]
     if not targets:
@@ -51,12 +74,7 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
     base_targets = [p for p in targets if base_source[p] is not None]
 
     def run(worktree, files, **kwargs):
-        data = run_pytest(python, worktree, files, repo, pytest_args, **kwargs)
-        for module in data["leaked_imports"]:
-            result.warnings.append(
-                f"`{module}` was imported from the original checkout, not the worktree, "
-                "so results may reflect the wrong code (an editable install?).")
-        return data
+        return run_pytest(python, worktree, files, repo, pytest_args, **kwargs)
 
     with tempfile.TemporaryDirectory(prefix="tsg-") as tmp, \
             gitutil.worktree(repo, head_sha, Path(tmp) / "head") as head_wt, \
@@ -79,13 +97,19 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
         base_run = run(base_wt, files, select=list(judged))
         head_run = run(head_wt, files, select=list(judged))
 
+    if head_run["misrouted"]:
+        result.warnings.append("The head run loaded project code from outside the head worktree: "
+                               + _misrouted_message(head_run["misrouted"]))
     for test_id, kind in judged.items():
         file = test_id.split("::")[0]
-        base_outcome = summarize(base_run["results"].get(test_id),
-                                 base_run["collect_errors"].get(file), base_run.get("startup_error"))
+        if base_run["misrouted"]:
+            # The base run tested the wrong code, so none of its results count.
+            base_outcome = Outcome("error", "misrouted", message=_misrouted_message(base_run["misrouted"]))
+        else:
+            base_outcome = summarize(base_run["results"].get(test_id),
+                                     base_run["collect_errors"].get(file), base_run.get("startup_error"))
         head_outcome = summarize(head_run["results"].get(test_id),
                                  head_run["collect_errors"].get(file), head_run.get("startup_error"))
         label, reason = verdict(base_outcome, head_outcome)
         result.tests.append(JudgedTest(test_id, kind, base_outcome, head_outcome, label, reason))
-    result.warnings = list(dict.fromkeys(result.warnings))
     return result

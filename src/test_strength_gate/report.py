@@ -44,11 +44,21 @@ Each test above was run twice, once on the base commit with only the PR's test f
 - **SKIPPED**: skipped, so not judged."""
 
 
+PR_KIND_NOTES = {
+    "tests_only": "This PR changes no Python source outside its test files, so its tests are expected "
+                  "to pass at base. Weak results are normal here.",
+    "all_weak": "Every judged test passes without the source change. That is expected for a refactor, "
+                "or for tests that pin down existing behavior. For a bug fix or a new feature, it suggests "
+                "the tests don't exercise the change.",
+}
+
+
 def to_markdown(result):
-    lines = ["## Test strength gate", "",
-             summary_line(result.tests), "",
-             f"Base `{result.base[:10]}` (merge-base), head `{result.head[:10]}`. "
-             f"Changed test files: {len(result.test_files)}.", ""]
+    lines = ["## Test strength gate", "", summary_line(result.tests), ""]
+    if result.tests and result.pr_kind in PR_KIND_NOTES:
+        lines += [PR_KIND_NOTES[result.pr_kind], ""]
+    lines += [f"Base `{result.base[:10]}`, head `{result.head[:10]}`. Changed test files: "
+              f"{len(result.test_files)}. Changed Python source files: {len(result.source_files)}.", ""]
     if result.tests:
         lines += ["| Test | Kind | Base | Head | Verdict | Reason |",
                   "| --- | --- | --- | --- | --- | --- |"]
@@ -64,5 +74,6 @@ def to_markdown(result):
 def to_json(result):
     data = asdict(result)
     data["summary"] = summary_line(result.tests)
+    data["pr_kind"] = result.pr_kind
     data["counts"] = dict(Counter(t.verdict for t in result.tests))
     return json.dumps(data, indent=2)

@@ -14,9 +14,9 @@ VERDICTS = [STRONG, WEAK, INCONCLUSIVE, SKIPPED, BROKEN_AT_HEAD]
 # --- The exception-type rules. Change them here. -----------------------------
 
 # Errors that usually mean the test calls something the base code doesn't
-# have yet (a new module, function, attribute or name). The test fails at
-# base, but not because it checked behavior, so the failure proves little.
-MISSING_API_ERRORS = {"ImportError", "ModuleNotFoundError", "AttributeError", "NameError"}
+# have yet (a new module, function or name). The test fails at base, but not
+# because it checked behavior, so the failure proves little.
+MISSING_API_ERRORS = {"ImportError", "ModuleNotFoundError", "NameError"}
 
 # A TypeError whose message is about the call signature means the same thing,
 # e.g. a new keyword argument. Other TypeErrors are treated as behavior.
@@ -26,7 +26,7 @@ ARGUMENT_MISMATCH = re.compile(
 )
 
 
-def failure_kind(exc_type, message):
+def failure_kind(exc_type, message, attr_owner=None):
     """Say what a call-phase failure at base tells us about the test.
 
     Returns one of:
@@ -34,6 +34,9 @@ def failure_kind(exc_type, message):
       "missing_api" the test used an API base doesn't have (INCONCLUSIVE)
       "other_error" base raised some other exception; the test still saw
                     base behave differently from head (STRONG)
+
+    attr_owner is what kind of object lacked the attribute, for an
+    AttributeError: module, class, object, builtin, or None if unknown.
     """
     # pytest.raises(...) failing with "DID NOT RAISE", and pytest.fail(),
     # both raise pytest's Failed exception. Both are checks that failed.
@@ -41,6 +44,11 @@ def failure_kind(exc_type, message):
         return "assertion"
     if exc_type in MISSING_API_ERRORS:
         return "missing_api"
+    if exc_type == "AttributeError":
+        # calc.new_func or obj.new_method is a missing API. But None.value or
+        # "text".items means base returned the wrong kind of value, which is
+        # behavior. Unknown owners (monkeypatch, mock.patch) count as missing.
+        return "other_error" if attr_owner == "builtin" else "missing_api"
     if exc_type == "TypeError" and ARGUMENT_MISMATCH.search(message or ""):
         return "missing_api"
     return "other_error"
@@ -51,9 +59,10 @@ def failure_kind(exc_type, message):
 @dataclass
 class Outcome:
     status: str          # passed, failed, error, skipped, not_run
-    phase: str = ""      # setup, call, teardown, collect
+    phase: str = ""      # setup, call, teardown, collect, startup, misrouted
     exc_type: str = ""
     message: str = ""
+    attr_owner: str = ""
 
     def describe(self):
         if self.status in ("passed", "skipped"):
@@ -82,7 +91,8 @@ def summarize(phases, collect_error=None, startup_error=None):
             return Outcome("skipped", phase, message="xfail" if rec.get("xfail") else "")
         if rec["outcome"] == "failed":
             status = "failed" if phase == "call" else "error"
-            return Outcome(status, phase, rec.get("exc_type") or "", rec.get("message") or "")
+            return Outcome(status, phase, rec.get("exc_type") or "", rec.get("message") or "",
+                           rec.get("attr_owner") or "")
     return Outcome("passed", "call")
 
 
@@ -111,10 +121,11 @@ def verdict(base, head):
         what = {"collect": "The file fails to import at base",
                 "startup": "pytest could not start at base",
                 "setup": "Setup or fixture error at base",
-                "teardown": "Teardown error at base"}[base.phase]
+                "teardown": "Teardown error at base",
+                "misrouted": "The base run loaded project code from outside the base worktree"}[base.phase]
         return INCONCLUSIVE, f"{what}: {_short(base.message)}"
 
-    kind = failure_kind(base.exc_type, base.message)
+    kind = failure_kind(base.exc_type, base.message, base.attr_owner or None)
     if kind == "assertion":
         return STRONG, f"Fails at base on a check: {_short(base.message) or base.exc_type}"
     if kind == "missing_api":
