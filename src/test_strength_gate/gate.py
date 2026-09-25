@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 from . import gitutil
-from .classify import BROKEN_AT_HEAD, SKIPPED, WEAK, Outcome, summarize, verdict
+from .classify import BROKEN_AT_HEAD, INCONCLUSIVE, SKIPPED, WEAK, Outcome, summarize, verdict
 from .runner import run_pytest
 from .selection import DEFAULT_GLOBS, matches_any, pick_judged
 
@@ -18,6 +18,11 @@ class JudgedTest:
     head: Outcome
     verdict: str
     reason: str
+
+    @property
+    def is_file(self):
+        """A row for a whole test file whose tests could not be judged at head."""
+        return "::" not in self.id
 
 
 @dataclass
@@ -34,7 +39,7 @@ class GateResult:
         """'tests_only', 'all_weak' (looks like a refactor), or 'normal'."""
         if not self.source_files:
             return "tests_only"
-        judged = [t for t in self.tests if t.verdict not in (SKIPPED, BROKEN_AT_HEAD)]
+        judged = [t for t in self.tests if t.verdict not in (SKIPPED, BROKEN_AT_HEAD) and not t.is_file]
         if judged and all(t.verdict == WEAK for t in judged):
             return "all_weak"
         return "normal"
@@ -101,20 +106,26 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
         base_collect = run(base_wt, base_targets, collect_only=True) if base_targets else None
         # A changed test file that can't be collected at head has no test IDs,
         # so it gets one row of its own instead of silently dropping out.
-        broken = {file: f"The file fails to import at head, so none of its tests can be judged: {message}"
-                  for file, message in head_collect["collect_errors"].items() if file in targets}
+        # A file that fails to import is broken at head. But when the pytest
+        # run as a whole fails (a timeout, an internal error, a conftest.py
+        # that won't load), no file's result is known, so those rows are
+        # inconclusive.
+        rows = {file: (BROKEN_AT_HEAD, "collect",
+                       f"The file fails to import at head, so none of its tests can be judged: {message}")
+                for file, message in head_collect["collect_errors"].items() if file in targets}
         if head_collect.get("startup_error"):
             for file in targets:
-                broken.setdefault(file, f"pytest could not start at head, so none of the tests in this file "
-                                        f"can be judged: {head_collect['startup_error']}")
+                rows.setdefault(file, (INCONCLUSIVE, "startup",
+                                       f"pytest failed as a whole at head, so none of the tests in this file "
+                                       f"were judged: {head_collect['startup_error']}"))
         for file, message in head_collect["collect_errors"].items():
-            if file not in broken:
+            if file not in rows:
                 result.warnings.append(f"{file} fails to import at head: {message}")
-        for file in sorted(broken):
+        for file in sorted(rows):
+            label, phase, reason = rows[file]
             kind = "added" if base_source[file] is None else "modified"
             result.tests.append(JudgedTest(file, kind, Outcome("not_run", message="not run"),
-                                           Outcome("error", "collect", message=broken[file]),
-                                           BROKEN_AT_HEAD, broken[file]))
+                                           Outcome("error", phase, message=reason), label, reason))
 
         judged = pick_judged(head_collect["items"], base_collect["items"] if base_collect else [],
                              head_source, base_source)

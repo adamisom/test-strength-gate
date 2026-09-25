@@ -144,6 +144,10 @@ def verdict(base, head):
     """Return (verdict, one-line reason) from base and head Outcomes."""
     if head.status == "skipped":
         return SKIPPED, "Skipped at head, so it can't be judged."
+    if head.status == "error" and head.phase == "startup":
+        # A timeout or internal error ended the whole run, so the test's own
+        # result at head is unknown. That is not the same as failing there.
+        return INCONCLUSIVE, f"pytest failed as a whole at head, so the test was not judged: {_short(head.message)}"
     if head.status != "passed":
         detail = f": {_short(head.message)}" if head.message else ""
         return BROKEN_AT_HEAD, f"Does not pass at head ({head.describe()}{detail})."
@@ -156,7 +160,7 @@ def verdict(base, head):
         return INCONCLUSIVE, "Not collected at base (its ID may depend on base code)."
     if base.status == "error":
         what = {"collect": "The file fails to import at base",
-                "startup": "pytest could not start at base",
+                "startup": "pytest failed as a whole at base",
                 "setup": "Setup or fixture error at base",
                 "teardown": "Teardown error at base",
                 "misrouted": "The base run loaded project code from outside the base worktree"}[base.phase]

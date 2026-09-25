@@ -196,6 +196,15 @@ def test_collect_and_startup_errors_are_inconclusive():
     assert verdict(summarize(None, startup_error="boom"), PASSED)[0] == INCONCLUSIVE
 
 
+def test_a_head_run_that_fails_as_a_whole_is_inconclusive_not_broken():
+    # Codex re-review, remaining 2. A timeout or an internal pytest error at
+    # head says nothing about the test itself, so it must not be BROKEN_AT_HEAD.
+    base = summarize({"call": phase("failed", "AssertionError", "assert 0")})
+    label, reason = verdict(base, summarize(None, startup_error="pytest timed out after 900 seconds"))
+    assert label == INCONCLUSIVE
+    assert "at head" in reason and "pytest timed out after 900 seconds" in reason
+
+
 def judged(verdict_, kind="added"):
     return JudgedTest("t.py::x", kind, PASSED, PASSED, verdict_, "")
 
@@ -210,6 +219,18 @@ def test_summary_line():
     broken_file = JudgedTest("tests/test_x.py", "added", PASSED, PASSED, BROKEN_AT_HEAD, "")
     assert summary_line([broken_file]) == (
         "No tests could be judged: 1 changed test file fails to import at head, so its tests were not judged.")
+
+
+def test_summary_line_counts_files_whose_head_run_failed_apart_from_broken_files():
+    broken_file = JudgedTest("tests/test_x.py", "added", PASSED, PASSED, BROKEN_AT_HEAD, "")
+    run_failed = JudgedTest("tests/test_y.py", "added", PASSED, PASSED, INCONCLUSIVE, "")
+    assert summary_line([run_failed]) == (
+        "No tests could be judged: pytest failed as a whole at head for 1 changed test file, "
+        "so its tests were not judged.")
+    assert summary_line([judged(STRONG), broken_file, run_failed]) == (
+        "1 new test: 1 strong, 0 weak (pass without the source change), 0 inconclusive. "
+        "Also, 1 changed test file fails to import at head, and pytest failed as a whole at head "
+        "for 1 changed test file, so their tests were not judged.")
 
 
 def test_legend_covers_the_newer_rules():

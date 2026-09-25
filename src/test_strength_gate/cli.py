@@ -6,7 +6,7 @@ import shlex
 import sys
 from pathlib import Path
 
-from .classify import WEAK
+from .classify import BROKEN_AT_HEAD, WEAK
 from .gate import run_gate
 from .gitutil import GitError
 from .report import to_json, to_markdown
@@ -58,8 +58,9 @@ def main(argv=None):
             print(f"::warning file={t.id.split('::')[0]},title=Weak test::"
                   f"{t.id} passes without the source change")
         for t in result.tests:
-            if "::" not in t.id:  # a test file that fails to import at head
-                print(f"::warning file={t.id},title=Test file not judged::{t.id} fails to import at head")
+            if t.is_file:  # a test file whose tests could not be judged at head
+                why = "fails to import at head" if t.verdict == BROKEN_AT_HEAD else "could not be run at head"
+                print(f"::warning file={t.id},title=Test file not judged::{t.id} {why}")
 
     # A tests-only PR has no source change to catch, so its weak tests don't fail the gate.
     if args.fail_on == "weak" and weak and result.pr_kind != "tests_only":

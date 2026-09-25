@@ -8,15 +8,22 @@ from .classify import BROKEN_AT_HEAD, INCONCLUSIVE, SKIPPED, STRONG, WEAK
 
 
 def summary_line(tests):
-    # Rows without "::" are test files that fail to import at head.
-    files = [t for t in tests if "::" not in t.id]
-    tests = [t for t in tests if "::" in t.id]
-    unjudged = (f"{len(files)} changed test file{'s' * (len(files) != 1)} "
-                f"{'fails' if len(files) == 1 else 'fail'} to import at head, so {'its' if len(files) == 1 else 'their'} "
-                f"tests were not judged")
+    broken = sum(1 for t in tests if t.is_file and t.verdict == BROKEN_AT_HEAD)
+    run_failed = sum(1 for t in tests if t.is_file and t.verdict != BROKEN_AT_HEAD)
+    tests = [t for t in tests if not t.is_file]
+
+    def files(n):
+        return f"{n} changed test file{'s' * (n != 1)}"
+    parts = []
+    if broken:
+        parts.append(f"{files(broken)} {'fails' if broken == 1 else 'fail'} to import at head")
+    if run_failed:
+        parts.append(f"pytest failed as a whole at head for {files(run_failed)}")
+    unjudged = (", and ".join(parts)
+                + f", so {'its' if broken + run_failed == 1 else 'their'} tests were not judged")
     if not tests:
-        return f"No tests could be judged: {unjudged}." if files else "No added or modified tests to judge."
-    tail = f". Also, {unjudged}." if files else ""
+        return f"No tests could be judged: {unjudged}." if parts else "No added or modified tests to judge."
+    tail = f". Also, {unjudged}." if parts else ""
     return _tests_summary(tests) + tail
 
 
@@ -50,8 +57,8 @@ Each test above was run twice, once on the base commit with only the PR's test f
 
 - **STRONG**: fails at base on a check, so it would catch the source change going missing.
 - **WEAK**: passes at base. This is a prompt for a reviewer, not a failure. It is expected for refactors and for tests that pin down existing behavior, but for a bug fix or feature it can mean the test doesn't exercise the change.
-- **INCONCLUSIVE**: fails at base because the code it calls doesn't exist yet (import, attribute or signature errors), because it reads a file that exists at head but not in the base run, or because setup failed. It shows the API or input is new, not that the behavior is checked.
-- **BROKEN_AT_HEAD**: does not pass at head, so nothing else about it can be judged. A row with a file path instead of a test is a changed test file that fails to import at head.
+- **INCONCLUSIVE**: fails at base because the code it calls doesn't exist yet (import, attribute or signature errors), because it reads a file that exists at head but not in the base run, or because setup failed. It shows the API or input is new, not that the behavior is checked. It is also used when a pytest run fails as a whole (a timeout or an internal error), since the test's result is then unknown.
+- **BROKEN_AT_HEAD**: does not pass at head, so nothing else about it can be judged. A row with a file path instead of a test is a changed test file that fails to import at head, or, if INCONCLUSIVE, one whose pytest run at head failed as a whole.
 - **SKIPPED**: skipped, so not judged."""
 
 

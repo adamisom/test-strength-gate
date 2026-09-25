@@ -1,10 +1,12 @@
 """End-to-end edge cases through the CLI and the gate."""
 
+import functools
 import json
 import subprocess
 import sys
 
 from test_strength_gate.classify import BROKEN_AT_HEAD, INCONCLUSIVE, STRONG, WEAK
+from test_strength_gate import gate, runner
 from test_strength_gate.cli import main
 from test_strength_gate.gate import run_gate
 
@@ -331,3 +333,17 @@ def test_test_file_that_fails_to_import_at_head_gets_its_own_row(repo, tmp_path)
     cli(repo, base, head, "--markdown", str(out))
     assert ("1 new test: 1 strong, 0 weak (pass without the source change), 0 inconclusive. "
             "Also, 1 changed test file fails to import at head, so its tests were not judged.") in out.read_text()
+
+
+def test_head_timeout_is_an_inconclusive_file_row_not_broken(repo, monkeypatch):
+    # Codex re-review, remaining 2. A valid test file whose head run times out
+    # was reported as BROKEN_AT_HEAD, although its head result is unknown. It
+    # now gets an INCONCLUSIVE file row that gives the reason.
+    monkeypatch.setattr(gate, "run_pytest", functools.partial(runner.run_pytest, timeout=3))
+    base = repo.commit(SRC_BASE)
+    head = repo.commit({**SRC_HEAD, "tests/test_slow.py": "import time\nimport lib\n\ntime.sleep(60)\n\n"
+                        "def test_half():\n    assert lib.half(3) == 1.5\n"})
+    result = repo.gate(base, head)
+    [row] = result.tests
+    assert (row.id, row.verdict) == ("tests/test_slow.py", INCONCLUSIVE)
+    assert "pytest timed out after 3 seconds" in row.reason
