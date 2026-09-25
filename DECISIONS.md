@@ -107,6 +107,7 @@ Source: brief, widened during the build and after research.
 - **Surprise.** A `pytest.raises` block that doesn't raise fails with `Failed: DID NOT RAISE`, and `Failed` is not a subclass of AssertionError, so the brief's rule would have missed a common kind of strong test. `pytest.fail()` raises the same exception.
 - **Alternatives.** Count only AssertionError as strong, and call other exceptions inconclusive.
 - **Why.** A test that gets a KeyError from the old code has still seen the old code behave differently, and that is the question the tool asks.
+- **Reviewed.** The Codex review (finding 2) asked for this rule to become inconclusive by default. Decision 25 explains why it stays, with measurements.
 
 ## 11. AttributeError is split by what lacked the attribute
 
@@ -234,3 +235,20 @@ Source: changed after the Codex review (finding 1).
 - **Choice.** The default pattern `tests/**/*.py` became `tests/**`. Decision 23 already copies non-Python matches without passing them to pytest, so the wider pattern is safe. The plugin records the path of a `FileNotFoundError` when it is inside the worktree, and the gate checks whether that path exists in the head commit. If it does, the test is inconclusive, and the reason names the file and suggests a pattern. A `FileNotFoundError` for a file the head commit doesn't have either still counts as strong, because then the old code failed to create or find something the new code handles.
 - **Alternatives.** Call every `OSError` inconclusive. That would also hide a real fix, such as code that used to crash on a missing config file and now falls back to defaults.
 - **Why.** The wider default removes the common case, and the head-commit check catches the rest without guessing from the exception type alone. Three tests cover it (`test_new_data_file_under_tests_travels_with_the_default_globs`, `test_file_missing_at_base_but_present_at_head_is_inconclusive`, and `test_file_missing_at_both_base_and_head_commits_stays_strong`). On the evaluation it changed no verdicts, since robocop's fixtures already travelled under `--test-glob 'tests/**'` and its default-globs run gave the same verdicts.
+
+## 25. Strong verdicts from other exceptions say where the exception was raised
+
+Source: build, after the Codex review (finding 2). The verdict rule from decision 10 is unchanged.
+
+- **Context.** Codex argued that "any other exception is strong" is too broad, because a test can fail for a reason unrelated to the source change, and asked for such exceptions to be inconclusive by default, or limited to a reviewed list, with the traceback kept for review.
+- **Evidence.** A test only comes out strong if it passes at head, so an error that happens in both runs (an unset environment variable, a broken dependency) is BROKEN_AT_HEAD, not strong. A scratch repository confirmed this. A false strong needs something other than the source code to differ between the two runs. Three scratch cases found such differences: a data file the PR adds (fixed by decision 24), a data file the PR changes outside the patterns (the test fails at base with a `KeyError`, and would fail just the same with an assertion), and a test-support module outside the patterns that the PR changes (the tool counts it as source, so the test does depend on the PR's change). None of these is about the exception type. On the evaluation, 5 of the 20 strong verdicts come from exceptions other than assertions, and the hand check found all 5 correct. Applied to the recorded results, the stricter rules would do this:
+
+  | Rule | Strong verdicts lost on the evaluation |
+  | --- | --- |
+  | Every other exception is inconclusive (Codex's first suggestion) | 5 of 5: EvidenceForge's and instructor's `ValueError`, OpenEnv's two `JSONDecodeError`s and its `AttributeError` on a list |
+  | Strong only if the old project code was on the stack | 2: OpenEnv's `JSONDecodeError`s, which the test's own `json.loads` raises on the file the old code wrote |
+  | A list of behavioral types (ValueError, LookupError, ArithmeticError, AttributeError on a builtin, other TypeErrors) | 0 here, but it would also make an exception class defined by the project inconclusive, and the evaluation has no such case to measure |
+  | Every `OSError` is inconclusive | 0 here, and it adds nothing beyond decision 24 |
+
+- **Choice.** The rule stays. The plugin now records the innermost frame of the traceback and the innermost frame inside the worktree, and the reason for a strong verdict from another exception says where it was raised, e.g., "raised at src/pkg/mod.py:95" or "raised in library code called from tests/test_x.py:267". The JSON report has both locations.
+- **Why.** The only systematic cause of a false strong that the review and the scratch cases found is an input that differs between the runs, and decision 24 handles the one the tool can see. Narrowing by exception type or by stack would have turned correct verdicts into inconclusive ones on real pull requests. Showing the location lets a reviewer check each case. Whether to narrow the rule further is left open until there is evidence from more pull requests. A test covers the new reasons (`test_non_assertion_strong_says_where_it_was_raised`).

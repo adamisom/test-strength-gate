@@ -73,6 +73,17 @@ class Outcome:
     attr_owner: str = ""
     missing_path: str = ""   # for FileNotFoundError: the path, relative to the worktree
     file_at_head: bool = False  # set by the gate: missing_path exists in the head commit
+    raised_at: str = ""      # "path:line" of the frame that raised
+    raised_inside: bool = False  # that frame is a file in the worktree, not a library
+    local_at: str = ""       # "path:line" of the last frame in the worktree
+
+    def location(self):
+        """Where the exception came from, for the reason text."""
+        if self.raised_inside:
+            return f"raised at {self.raised_at}"
+        if self.local_at:
+            return f"raised in library code called from {self.local_at}"
+        return ""
 
     def describe(self):
         if self.status in ("passed", "skipped"):
@@ -102,7 +113,9 @@ def summarize(phases, collect_error=None, startup_error=None):
         if rec["outcome"] == "failed":
             status = "failed" if phase == "call" else "error"
             return Outcome(status, phase, rec.get("exc_type") or "", rec.get("message") or "",
-                           rec.get("attr_owner") or "", rec.get("missing_path") or "")
+                           rec.get("attr_owner") or "", rec.get("missing_path") or "",
+                           raised_at=rec.get("raised_at") or "", raised_inside=bool(rec.get("raised_inside")),
+                           local_at=rec.get("local_at") or "")
     return Outcome("passed", "call")
 
 
@@ -145,4 +158,7 @@ def verdict(base, head):
     if kind == "missing_api":
         return INCONCLUSIVE, (f"Fails at base with {base.exc_type}, which usually means the new API "
                               f"doesn't exist yet: {_short(base.message)}")
-    return STRONG, f"Fails at base with {base.exc_type} (not an assertion): {_short(base.message)}"
+    # Not an assertion, so show where it was raised: in the old code, in the
+    # test's own code, or in a library. A reviewer can then check the cause.
+    where = f", {base.location()}" if base.location() else ""
+    return STRONG, f"Fails at base with {base.exc_type} (not an assertion{where}): {_short(base.message)}"

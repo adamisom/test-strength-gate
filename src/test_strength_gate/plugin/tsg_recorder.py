@@ -13,7 +13,8 @@ Settings come from environment variables:
 The JSON has four keys:
   items           IDs of collected (and selected) tests
   collect_errors  {file: last error line} for files that failed to import
-  results         {id: {phase: {outcome, exc_type, message, attr_owner, missing_path, xfail}}}
+  results         {id: {phase: {outcome, exc_type, message, attr_owner, missing_path,
+                                raised_at, raised_inside, local_at, xfail}}}
   misrouted       {module: path} for project modules imported from outside the worktree
 """
 
@@ -111,6 +112,43 @@ def _missing_path(exc):
         return None
 
 
+def _inside(path):
+    try:
+        return Path(path).resolve().is_relative_to(_ROOT)
+    except (OSError, ValueError):
+        return False
+
+
+def _where(path, line):
+    """'path:line', with the path relative to the worktree when it is inside it."""
+    try:
+        path = Path(path).resolve().relative_to(_ROOT).as_posix()
+    except (OSError, ValueError):
+        pass
+    return f"{path}:{line}"
+
+
+def _locations(exc):
+    """Where the exception was raised, from the traceback.
+
+    raised_at      the innermost frame, which may be in a library
+    raised_inside  whether that frame is a file in the worktree
+    local_at       the innermost frame that is in the worktree, i.e. the last
+                   line of the test's or the project's own code that ran
+    """
+    tb, innermost, local = exc.tb, None, None
+    while tb is not None:
+        code = tb.tb_frame.f_code
+        innermost = (code.co_filename, tb.tb_lineno)
+        if _inside(code.co_filename):
+            local = innermost
+        tb = tb.tb_next
+    if innermost is None:
+        return {"raised_at": None, "raised_inside": False, "local_at": None}
+    return {"raised_at": _where(*innermost), "raised_inside": _inside(innermost[0]),
+            "local_at": _where(*local) if local else None}
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     # The exception type is only available here, on the worker that ran the
@@ -125,6 +163,7 @@ def pytest_runtest_makereport(item, call):
         "message": str(exc.value)[:500] if exc else None,
         "attr_owner": _attr_owner(exc.value) if exc else None,
         "missing_path": _missing_path(exc.value) if exc else None,
+        **(_locations(exc) if exc else {}),
         "xfail": hasattr(report, "wasxfail"),
     }))
 
@@ -140,6 +179,9 @@ def pytest_runtest_logreport(report):
         "message": info["message"],
         "attr_owner": info["attr_owner"],
         "missing_path": info["missing_path"],
+        "raised_at": info.get("raised_at"),
+        "raised_inside": info.get("raised_inside", False),
+        "local_at": info.get("local_at"),
         "xfail": info["xfail"],
     }
 

@@ -218,3 +218,20 @@ def test_file_missing_at_both_base_and_head_commits_stays_strong(repo):
                         "    assert (tmp_path / 'out.txt').read_text() == 'ok'\n"})
     [test] = repo.gate(base, head).tests
     assert (test.verdict, test.base.exc_type) == (STRONG, "FileNotFoundError")
+
+
+def test_non_assertion_strong_says_where_it_was_raised(repo):
+    # Codex review finding 2. A strong verdict from an exception other than an
+    # assertion names the line that raised it, so a reviewer can tell an error
+    # in the old code from one in the test's own code or in a library.
+    base = repo.commit({"lib.py": "import json\n\ndef parse(text):\n    return json.loads(text)\n\n"
+                                  "def check(n):\n    return n\n"})
+    head = repo.commit({"lib.py": "import json\n\ndef parse(text):\n    return json.loads(text or 'null')\n\n"
+                                  "def check(n):\n    if n < 0:\n        return 0\n    return n\n",
+                        "tests/test_lib.py": "import lib\n\ndef test_parse_empty():\n    assert lib.parse('') is None\n\n"
+                        "def test_check():\n    [1, 2][lib.check(-5)]\n"})
+    by_name = {t.id.split("::")[1]: t for t in repo.gate(base, head).tests}
+    parse, check = by_name["test_parse_empty"], by_name["test_check"]
+    assert (parse.verdict, check.verdict) == (STRONG, STRONG)
+    assert "raised in library code called from lib.py:4" in parse.reason
+    assert "raised at tests/test_lib.py:7" in check.reason
