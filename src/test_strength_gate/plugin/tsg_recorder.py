@@ -217,23 +217,51 @@ def pytest_runtest_logreport(report):
     }
 
 
+# Folders whose packages are not the project's importable code: tests, docs,
+# examples, vendored copies of other projects, and build or environment output.
+_NOT_PROJECT_CODE = {"tests", "test", "testing", "docs", "doc", "examples", "example", "benchmarks",
+                     "scripts", "vendor", "vendored", "_vendor", "third_party", "build", "dist",
+                     "node_modules", "site-packages", "venv", "env"}
+
+
+def _project_top_level_names():
+    """Top-level module and package names that the worktree defines.
+
+    That is every .py file and package at the worktree root or in src/, and
+    every top-level package anywhere else: a folder with __init__.py whose
+    parent has none, such as lib/mypkg. Hidden folders and the folders in
+    _NOT_PROJECT_CODE are not searched. Namespace packages (no __init__.py)
+    outside the root and src/ are not found.
+    """
+    names = set()
+    for folder in (_ROOT, _ROOT / "src"):
+        if folder.is_dir():
+            names |= {p.stem for p in folder.glob("*.py")}
+            names |= {p.parent.name for p in folder.glob("*/__init__.py")}
+    for dirpath, dirnames, filenames in os.walk(_ROOT):
+        here = Path(dirpath)
+        if here != _ROOT and "__init__.py" in filenames and not (here.parent / "__init__.py").exists():
+            names.add(here.name)
+            dirnames[:] = []  # its subpackages share its top-level name
+            continue
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in _NOT_PROJECT_CODE]
+    return names
+
+
 def _misrouted_imports():
     """Project modules that were imported from outside the worktree.
 
     If the project is installed (pip install . or pip install -e .), its
     modules can load from site-packages or from the real checkout instead of
     the worktree, and then the base run tests head code. A project module is
-    one whose top-level name exists at the worktree root or in src/, or any
-    module loaded from the real checkout outside its virtualenv.
+    one whose top-level name the worktree defines (see
+    _project_top_level_names), or any module loaded from the real checkout
+    outside its virtualenv.
     """
     original = os.environ.get("TSG_ORIGINAL_REPO")
     original = Path(original).resolve() if original else None
     prefixes = {Path(sys.prefix).resolve(), Path(sys.base_prefix).resolve()}
-    local = set()
-    for folder in (_ROOT, _ROOT / "src"):
-        if folder.is_dir():
-            local |= {p.stem for p in folder.glob("*.py")}
-            local |= {p.parent.name for p in folder.glob("*/__init__.py")}
+    local = _project_top_level_names()
     found = {}
     for name, module in list(sys.modules.items()):
         file = getattr(module, "__file__", None)

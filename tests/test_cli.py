@@ -267,3 +267,20 @@ def test_bare_assertion_reason_shows_the_line_and_the_stderr_error(repo):
     assert test.verdict == STRONG
     assert "no message, at support/check.py:2: `assert got == want`" in test.reason
     assert "Last error on stderr: error: unknown option --new" in test.reason
+
+
+def test_installed_copy_of_a_lib_layout_package_makes_base_inconclusive(repo, tmp_path, monkeypatch):
+    # Codex review finding 5. The package lives in lib/, and a regular (not
+    # editable) install put a copy of the head version in site-packages, far
+    # from the checkout. The base run imports that copy and would call the
+    # test weak. The plugin must see that mypkg is the project's own package.
+    base = repo.commit({"lib/mypkg/__init__.py": "def double(x):\n    return x + x + 1\n"})
+    head = repo.commit({"lib/mypkg/__init__.py": "def double(x):\n    return x + x\n",
+                        "tests/test_pkg.py": "import mypkg\n\ndef test_d():\n    assert mypkg.double(2) == 4\n"})
+    site = tmp_path / "site-packages"
+    (site / "mypkg").mkdir(parents=True)
+    (site / "mypkg" / "__init__.py").write_text("def double(x):\n    return x + x\n")
+    monkeypatch.setenv("PYTHONPATH", str(site))
+    [test] = repo.gate(base, head).tests
+    assert test.verdict == INCONCLUSIVE
+    assert "outside the base worktree" in test.reason and "mypkg" in test.reason
