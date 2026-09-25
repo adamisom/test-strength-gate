@@ -49,7 +49,7 @@ Source: changed after research.
 - **Before.** The brief had the action default to `github.event.pull_request.base.sha` and `head.sha`, with `fetch-depth: 0`.
 - **Evidence.** On `pull_request`, `actions/checkout` checks out `refs/pull/N/merge`, a merge commit that GitHub rebuilds when the base branch moves. `base.sha` can be stale, and the Yosemite-Crew project counted tests from main as the PR's own because of this ([issue 3530](https://github.com/YosemiteCrew/Yosemite-Crew/issues/3530)).
 - **Choice.** When `base-sha` and `head-sha` are empty, the action uses `HEAD^1` (the base branch the merge was built on) as base and `HEAD` (the merge commit) as head, with `fetch-depth: 2`. It warns if `HEAD^2` differs from the PR head in the event. Both inputs can still be set by hand.
-- **Alternatives.** Use `HEAD^2` as head, as the research note suggested, or keep `fetch-depth: 0` with the merge-base.
+- **Alternatives.** Use `HEAD^2` (the PR head) as head, or keep `fetch-depth: 0` with the merge-base. The research note recommended `HEAD^1` as base and the merge commit as head, which is the choice made here.
 - **Why.** Using the merge commit as head tests exactly the code that would land, and the diff from `HEAD^1` to `HEAD` is exactly the PR's change on top of current main. With `HEAD^2` as head, the diff would include main's newer changes, reversed. Depth 2 fetches three commits instead of the whole history. Since `HEAD^1` is an ancestor of `HEAD`, the merge-base step from decision 4 still works in the shallow clone, and there is a test that clones a merge commit with `--depth 2`.
 
 ## 6. Telling added tests from modified tests
