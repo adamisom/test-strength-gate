@@ -57,6 +57,9 @@ def main(argv=None):
         for t in weak:  # shows as a warning on the PR's Files tab
             print(f"::warning file={t.id.split('::')[0]},title=Weak test::"
                   f"{t.id} passes without the source change")
+        for t in result.tests:
+            if "::" not in t.id:  # a test file that fails to import at head
+                print(f"::warning file={t.id},title=Test file not judged::{t.id} fails to import at head")
 
     # A tests-only PR has no source change to catch, so its weak tests don't fail the gate.
     if args.fail_on == "weak" and weak and result.pr_kind != "tests_only":

@@ -4,7 +4,7 @@ import json
 import subprocess
 import sys
 
-from test_strength_gate.classify import INCONCLUSIVE, STRONG, WEAK
+from test_strength_gate.classify import BROKEN_AT_HEAD, INCONCLUSIVE, STRONG, WEAK
 from test_strength_gate.cli import main
 from test_strength_gate.gate import run_gate
 
@@ -299,3 +299,21 @@ def test_new_class_decorator_makes_an_unchanged_method_modified(repo):
                                              "class TestD:\n" + method})
     result = repo.gate(base, head)
     assert [(t.id, t.kind) for t in result.tests] == [("tests/test_cls.py::TestD::test_d", "modified")]
+
+
+def test_test_file_that_fails_to_import_at_head_gets_its_own_row(repo, tmp_path):
+    # Codex review finding 7. A new test file with a syntax error has no test
+    # IDs, so it used to vanish, and the report said "No added or modified
+    # tests to judge". It now has a BROKEN_AT_HEAD row and its own count.
+    base = repo.commit(SRC_BASE)
+    head = repo.commit({**SRC_HEAD, **STRONG_TEST,
+                        "tests/test_broken.py": "import lib\n\ndef test_b(:\n    assert lib.double(2) == 4\n"})
+    result = repo.gate(base, head)
+    rows = {t.id: t for t in result.tests}
+    assert rows["tests/test_broken.py"].verdict == BROKEN_AT_HEAD
+    assert "fails to import at head" in rows["tests/test_broken.py"].reason
+    assert rows["tests/test_half.py::test_half"].verdict == STRONG
+    out = tmp_path / "r.md"
+    cli(repo, base, head, "--markdown", str(out))
+    assert ("1 new test: 1 strong, 0 weak (pass without the source change), 0 inconclusive. "
+            "Also, 1 changed test file fails to import at head, so its tests were not judged.") in out.read_text()

@@ -12,7 +12,7 @@ from .selection import DEFAULT_GLOBS, matches_any, pick_judged
 
 @dataclass
 class JudgedTest:
-    id: str
+    id: str          # a test ID, or just a file path for a file that fails to import at head
     kind: str        # added or modified
     base: Outcome
     head: Outcome
@@ -99,10 +99,22 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
                                    "(usually generated at install time): " + ", ".join(sorted(set(copied))))
         head_collect = run(head_wt, targets, collect_only=True)
         base_collect = run(base_wt, base_targets, collect_only=True) if base_targets else None
-        for file, message in head_collect["collect_errors"].items():
-            result.warnings.append(f"{file} fails to import at head, so its tests were not judged: {message}")
+        # A changed test file that can't be collected at head has no test IDs,
+        # so it gets one row of its own instead of silently dropping out.
+        broken = {file: f"The file fails to import at head, so none of its tests can be judged: {message}"
+                  for file, message in head_collect["collect_errors"].items() if file in targets}
         if head_collect.get("startup_error"):
-            result.warnings.append(f"pytest could not collect at head: {head_collect['startup_error']}")
+            for file in targets:
+                broken.setdefault(file, f"pytest could not start at head, so none of the tests in this file "
+                                        f"can be judged: {head_collect['startup_error']}")
+        for file, message in head_collect["collect_errors"].items():
+            if file not in broken:
+                result.warnings.append(f"{file} fails to import at head: {message}")
+        for file in sorted(broken):
+            kind = "added" if base_source[file] is None else "modified"
+            result.tests.append(JudgedTest(file, kind, Outcome("not_run", message="not run"),
+                                           Outcome("error", "collect", message=broken[file]),
+                                           BROKEN_AT_HEAD, broken[file]))
 
         judged = pick_judged(head_collect["items"], base_collect["items"] if base_collect else [],
                              head_source, base_source)

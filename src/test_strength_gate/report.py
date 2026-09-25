@@ -8,8 +8,19 @@ from .classify import BROKEN_AT_HEAD, INCONCLUSIVE, SKIPPED, STRONG, WEAK
 
 
 def summary_line(tests):
+    # Rows without "::" are test files that fail to import at head.
+    files = [t for t in tests if "::" not in t.id]
+    tests = [t for t in tests if "::" in t.id]
+    unjudged = (f"{len(files)} changed test file{'s' * (len(files) != 1)} "
+                f"{'fails' if len(files) == 1 else 'fail'} to import at head, so {'its' if len(files) == 1 else 'their'} "
+                f"tests were not judged")
     if not tests:
-        return "No added or modified tests to judge."
+        return f"No tests could be judged: {unjudged}." if files else "No added or modified tests to judge."
+    tail = f". Also, {unjudged}." if files else ""
+    return _tests_summary(tests) + tail
+
+
+def _tests_summary(tests):
     kinds = Counter(t.kind for t in tests)
     counts = Counter(t.verdict for t in tests)
     n = len(tests)
@@ -40,7 +51,7 @@ Each test above was run twice, once on the base commit with only the PR's test f
 - **STRONG**: fails at base on a check, so it would catch the source change going missing.
 - **WEAK**: passes at base. This is a prompt for a reviewer, not a failure. It is expected for refactors and for tests that pin down existing behavior, but for a bug fix or feature it can mean the test doesn't exercise the change.
 - **INCONCLUSIVE**: fails at base because the code it calls doesn't exist yet (import, attribute or signature errors), or because setup failed. It shows the API is new, not that the behavior is checked.
-- **BROKEN_AT_HEAD**: does not pass at head, so nothing else about it can be judged.
+- **BROKEN_AT_HEAD**: does not pass at head, so nothing else about it can be judged. A row with a file path instead of a test is a changed test file that fails to import at head.
 - **SKIPPED**: skipped, so not judged."""
 
 

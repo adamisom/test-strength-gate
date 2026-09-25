@@ -207,3 +207,6 @@ def test_summary_line():
         "3 new or changed tests (2 new, 1 modified): 0 strong, 2 weak (pass without the source change), "
         "0 inconclusive, 1 broken at head")
     assert summary_line([]) == "No added or modified tests to judge."
+    broken_file = JudgedTest("tests/test_x.py", "added", PASSED, PASSED, BROKEN_AT_HEAD, "")
+    assert summary_line([broken_file]) == (
+        "No tests could be judged: 1 changed test file fails to import at head, so its tests were not judged.")

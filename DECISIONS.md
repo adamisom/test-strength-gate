@@ -128,6 +128,7 @@ Source: brief, with one change in the build.
 - **Choice.** Any test that doesn't pass at head is BROKEN_AT_HEAD, whatever happened at base. The exception is a test skipped at head, which is SKIPPED, because a skip (for example on the wrong platform) is not a failure.
 - **Alternatives.** Trust the caller's own test job to catch head failures.
 - **Why.** The head run costs little, since it runs only the judged tests, and it also catches tests that depend on something the base worktree lacks.
+- **Changed.** A test file that fails to import at head used to drop out with only a warning. Decision 30 gives it a row.
 
 ## 13. A conftest.py that fails to import makes the whole run inconclusive
 
@@ -294,3 +295,13 @@ Source: changed after the Codex review (finding 6).
 - **Choice.** For each class that encloses the test, the fingerprint adds the class's decorators, bases and keywords, its class-level statements (attributes and `pytestmark`), and its setup and teardown methods (`setup_method`, `setUp` and the rest) and autouse fixtures. It leaves out the class docstring, the other tests, plain helper methods and nested classes.
 - **Alternatives.** Fingerprint the whole class, so any edit to any method judges every test in it again. That would make the common PR that adds one test and one helper to a class re-judge all its old tests, which then mostly come out weak, much like the parametrize surprise in decision 6.
 - **Why.** The included parts run for every test in the class, so a change to them changes what each test does. Helper methods and non-autouse fixtures affect only the tests that call them, and v0 already doesn't follow those (the fixture-only limit in decision 20). On the evaluation it judged no new tests and changed no verdicts. Tests cover it (`test_fingerprint_includes_the_enclosing_class_context`, `test_new_class_decorator_makes_an_unchanged_method_modified`).
+
+## 30. A test file that fails to import at head gets its own row
+
+Source: changed after the Codex review (finding 7).
+
+- **Before.** When a changed test file failed to collect at head, for example with a syntax error or an import of a missing module, the gate added a warning and judged nothing in it, since there were no test IDs to judge. If it was the PR's only test file, the summary line said "No added or modified tests to judge."
+- **Evidence.** A scratch repository reproduced it with a new test file containing `def test_b(:`. The report's first line said "No added or modified tests to judge", and only the warnings section at the bottom mentioned the file.
+- **Choice.** Each changed test file that fails to collect at head, or every changed test file when pytest can't start at head, gets one row with the file path as its ID, BROKEN_AT_HEAD as the verdict, and pytest's error line as the reason. The summary line counts these files apart from tests, e.g., "No tests could be judged: 1 changed test file fails to import at head, so its tests were not judged." In a GitHub workflow each such file also gets a warning annotation.
+- **Alternatives.** A separate verdict such as UNJUDGED, which would add a sixth label for a case that already fits "does not pass at head".
+- **Why.** A PR whose new test file doesn't even import should not look like a PR without tests. The row reuses the existing label, and the file path in the ID column tells it apart from a test. Tests cover it (`test_test_file_that_fails_to_import_at_head_gets_its_own_row`, `test_summary_line`).
