@@ -250,3 +250,14 @@ def test_legend_covers_the_newer_rules():
     # file rows for test files that fail to import at head.
     assert "a file that exists at head but not in the base run" in LEGEND
     assert "a file path instead of a test" in LEGEND
+
+
+def test_legend_does_not_claim_file_rows_were_run_twice():
+    # Codex re-review, finding 9 nit. A file row is not a test, and its tests
+    # may never have run, so the legend must not say every row ran twice.
+    assert "Each test above was run twice" not in LEGEND
+    first, rest = LEGEND.split("\n\n", 2)[1:]
+    assert first.startswith("Each judged test was run twice")
+    assert "BROKEN_AT_HEAD if the file fails to import at head" in first
+    assert "INCONCLUSIVE if the pytest run at head failed as a whole" in first
+    assert "Another exception counts only if the old code caused it" in rest

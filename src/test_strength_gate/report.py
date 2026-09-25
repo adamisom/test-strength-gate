@@ -53,12 +53,12 @@ def _cell(text):
 LEGEND = """\
 ### How to read this
 
-Each test above was run twice, once on the base commit with only the PR's test files copied in, and once on the head commit.
+Each judged test was run twice, once on the base commit with only the PR's test files copied in, and once on the head commit. A row with a file path instead of a test is a whole changed test file whose tests could not be judged, and none of them ran at base: BROKEN_AT_HEAD if the file fails to import at head, INCONCLUSIVE if the pytest run at head failed as a whole.
 
-- **STRONG**: fails at base on a check, so it would catch the source change going missing.
+- **STRONG**: fails at base, so it would catch the source change going missing. A failed check is firm evidence. Another exception counts only if the old code caused it, so its reason says where it was raised and asks you to inspect the cause.
 - **WEAK**: passes at base. This is a prompt for a reviewer, not a failure. It is expected for refactors and for tests that pin down existing behavior, but for a bug fix or feature it can mean the test doesn't exercise the change.
-- **INCONCLUSIVE**: fails at base because the code it calls doesn't exist yet (import, attribute or signature errors), because it reads a file that exists at head but not in the base run, or because setup failed. It shows the API or input is new, not that the behavior is checked. It is also used when a pytest run fails as a whole (a timeout or an internal error), since the test's result is then unknown.
-- **BROKEN_AT_HEAD**: does not pass at head, so nothing else about it can be judged. A row with a file path instead of a test is a changed test file that fails to import at head, or, if INCONCLUSIVE, one whose pytest run at head failed as a whole.
+- **INCONCLUSIVE**: fails at base because the code it calls doesn't exist yet (import, attribute or signature errors), because it reads a file that exists at head but not in the base run, or because setup failed. It shows the API or input is new, not that the behavior is checked. It is also used when a pytest run fails as a whole (a timeout or an internal error), since the result is then unknown.
+- **BROKEN_AT_HEAD**: does not pass at head, so nothing else about it can be judged.
 - **SKIPPED**: skipped, so not judged."""
 
 
