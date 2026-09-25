@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "Check whether a PR's new tests would have caught the absence of its source change."
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
 dependencies = []
 
 [project.optional-dependencies]
