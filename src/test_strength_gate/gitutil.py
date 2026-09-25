@@ -67,6 +67,12 @@ def checkout_files(worktree_path, rev, paths):
         git(worktree_path, "checkout", rev, "--", *paths)
 
 
+def remove_files(worktree_path, paths):
+    """Delete `paths` from the worktree, and any folders that are left empty."""
+    if paths:
+        git(worktree_path, "rm", "-q", "-f", "--ignore-unmatch", "--", *paths)
+
+
 def ignored_python_files(repo):
     """Git-ignored .py files in the checkout, outside ignored directories.
 

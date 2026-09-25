@@ -53,7 +53,7 @@ def _cell(text):
 LEGEND = """\
 ### How to read this
 
-Each judged test was run twice, once on the base commit with only the PR's test files copied in, and once on the head commit. A row with a file path instead of a test is a whole changed test file whose tests could not be judged, and none of them ran at base: BROKEN_AT_HEAD if the file fails to import at head, INCONCLUSIVE if the pytest run at head failed as a whole.
+Each judged test was run twice, once on the base commit with only the PR's test-side changes applied (its test files copied in, and the ones it deletes removed), and once on the head commit. A row with a file path instead of a test is a whole changed test file whose tests could not be judged, and none of them ran at base: BROKEN_AT_HEAD if the file fails to import at head, INCONCLUSIVE if the pytest run at head failed as a whole.
 
 - **STRONG**: fails at base, so it would catch the source change going missing. A failed check is firm evidence. Another exception counts only if the old code caused it, so its reason says where it was raised and asks you to inspect the cause.
 - **WEAK**: passes at base. This is a prompt for a reviewer, not a failure. It is expected for refactors and for tests that pin down existing behavior, but for a bug fix or feature it can mean the test doesn't exercise the change.
@@ -71,16 +71,22 @@ PR_KIND_NOTES = {
 }
 
 
-def _other_files_note(paths, limit=10):
-    shown = ", ".join(f"`{_cell(p)}`" for p in paths[:limit])
+def _other_files_note(paths, deleted, limit=10):
+    shown = ", ".join(f"`{_cell(p)}`" + (" (deleted)" if p in deleted else "") for p in paths[:limit])
     if len(paths) > limit:
         shown += f" and {len(paths) - limit} more"
     n = len(paths)
-    return (f"**Check these inputs before trusting a strong verdict.** The PR changes {n} "
-            f"non-Python file{'s' * (n != 1)} outside the test patterns: {shown}. The base run used "
-            f"{'their' if n != 1 else 'its'} old version. A test that reads one of them can fail at base for a "
-            f"reason unrelated to the source change and still come out strong. If they are test data, "
-            f"add a --test-glob that matches them.")
+    gone = sum(1 for p in paths if p in deleted)
+    if not gone:
+        verb, base_run = "changes", f"used {'their' if n != 1 else 'its'} old version"
+    elif gone == n:
+        verb, base_run = "deletes", f"still had {'them' if n != 1 else 'it'}"
+    else:
+        verb, base_run = "changes or deletes", "used their old versions and still had the deleted ones"
+    return (f"**Check these inputs before trusting a strong verdict.** The PR {verb} {n} "
+            f"non-Python file{'s' * (n != 1)} outside the test patterns: {shown}. The base run {base_run}. "
+            f"A test that reads one of them can fail at base for a reason unrelated to the source change "
+            f"and still come out strong. If they are test data, add a --test-glob that matches them.")
 
 
 def to_markdown(result):
@@ -88,7 +94,7 @@ def to_markdown(result):
     if result.tests and result.pr_kind in PR_KIND_NOTES:
         lines += [PR_KIND_NOTES[result.pr_kind], ""]
     if result.other_files and any(t.verdict == STRONG for t in result.tests):
-        lines += [_other_files_note(result.other_files), ""]
+        lines += [_other_files_note(result.other_files, set(result.deleted_files)), ""]
     lines += [f"Base `{result.base[:10]}`, head `{result.head[:10]}`. Changed test files: "
               f"{len(result.test_files)}. Changed Python source files: {len(result.source_files)}.", ""]
     if result.tests:

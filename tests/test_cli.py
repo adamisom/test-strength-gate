@@ -368,3 +368,47 @@ def test_head_timeout_is_an_inconclusive_file_row_not_broken(repo, monkeypatch):
     [row] = result.tests
     assert (row.id, row.verdict) == ("tests/test_slow.py", INCONCLUSIVE)
     assert "pytest timed out after 3 seconds" in row.reason
+
+
+def test_fixture_deleted_under_the_patterns_is_deleted_at_base_too(repo):
+    # Codex re-review, round 2. The PR deletes a data file under tests/ and
+    # adds a test that checks it is gone. The base run must see the PR's test
+    # side, deletions included, or the test fails at base on the stale file
+    # and looks strong. Nothing in the source changed, so it is weak.
+    base = repo.commit({**SRC_BASE, "tests/data/old.txt": "stale\n"})
+    head = repo.commit({**REFACTOR, "tests/data/old.txt": None,
+                        "tests/test_cleanup.py": "import pathlib\n\ndef test_old_fixture_is_gone():\n"
+                        "    assert not (pathlib.Path(__file__).parent / 'data' / 'old.txt').exists()\n"})
+    result = repo.gate(base, head)
+    [test] = result.tests
+    assert test.verdict == WEAK
+    assert result.deleted_files == ["tests/data/old.txt"]
+
+
+def test_deleted_file_outside_the_patterns_is_named_at_the_top_of_the_report(repo, tmp_path):
+    # Codex re-review, round 2. A file the PR deletes outside the patterns is
+    # still present in the base run, so the report must name it like a
+    # changed one, and say that it was deleted.
+    base = repo.commit({**SRC_BASE, "data/old.txt": "stale\n", "docs/old.md": "old\n"})
+    head = repo.commit({**REFACTOR, "data/old.txt": None, "docs/old.md": None,
+                        "tests/test_cleanup.py": "import pathlib\n\ndef test_old_data_is_gone():\n"
+                        "    assert not pathlib.Path('data/old.txt').exists()\n"})
+    result = repo.gate(base, head)
+    [test] = result.tests
+    assert test.verdict == STRONG  # a false strong that only the note can flag
+    assert result.other_files == ["data/old.txt"]  # docs are left out
+    out = tmp_path / "r.md"
+    cli(repo, base, head, "--markdown", str(out))
+    top = out.read_text().split("| Test |")[0]
+    assert "`data/old.txt` (deleted)" in top and "still had it" in top
+
+
+def test_test_side_file_replaced_by_a_folder_of_the_same_name(repo):
+    # The PR deletes tests/data and adds tests/data/x.txt. The deletion must
+    # happen before the copy, or git refuses to remove what is by then a folder.
+    base = repo.commit({**SRC_BASE, "tests/data": "old\n"})
+    head = repo.commit({**REFACTOR, "tests/data": None, "tests/data/x.txt": "new\n",
+                        "tests/test_x.py": "import pathlib\n\ndef test_x():\n"
+                        "    assert (pathlib.Path(__file__).parent / 'data' / 'x.txt').read_text() == 'new\\n'\n"})
+    [test] = repo.gate(base, head).tests
+    assert test.verdict == WEAK

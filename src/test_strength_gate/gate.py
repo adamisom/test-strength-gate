@@ -31,7 +31,8 @@ class GateResult:
     head: str
     test_files: list = field(default_factory=list)
     source_files: list = field(default_factory=list)  # changed .py files that are not tests
-    other_files: list = field(default_factory=list)   # changed non-Python inputs outside the patterns
+    other_files: list = field(default_factory=list)   # changed or deleted non-Python inputs outside the patterns
+    deleted_files: list = field(default_factory=list)  # every file the PR deletes
     tests: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
 
@@ -79,13 +80,18 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
         result.warnings.append("No merge-base found (shallow clone?), so the base commit is used as given.")
 
     for status, path in gitutil.changed_files(repo, base_sha, head_sha):
+        if status == "D":
+            result.deleted_files.append(path)
         if matches_any(path, globs):
             if status != "D":
                 result.test_files.append(path)
         elif path.endswith(".py"):
             result.source_files.append(path)
-        elif status != "D" and not _is_docs(path):
+        elif not _is_docs(path):
             result.other_files.append(path)
+    # Test-side files the PR deletes, such as a data fixture, are removed from
+    # the base run, just as added and modified ones are copied in.
+    deleted_test_files = [p for p in result.deleted_files if matches_any(p, globs)]
     # conftest.py files and non-Python files that match the patterns (data
     # fixtures such as tests/**/*.json) are copied to base, but they hold no
     # tests to collect, and pytest exits with "no match" if given one.
@@ -140,7 +146,10 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
         if not judged:
             return result
 
-        # Base run: base source code plus the PR's version of every test file.
+        # Base run: base source code plus the PR's version of the test side,
+        # with the test files it deletes removed and the ones it changes copied
+        # in. Removing first lets a file be replaced by a folder of its name.
+        gitutil.remove_files(base_wt, deleted_test_files)
         gitutil.checkout_files(base_wt, head_sha, result.test_files)
         files = sorted({test_id.split("::")[0] for test_id in judged})
         base_run = run(base_wt, files, select=list(judged))
