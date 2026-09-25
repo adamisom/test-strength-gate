@@ -29,7 +29,7 @@ def changed_files(repo, base, head):
     """Return [(status, path)] for files that differ between base and head.
 
     --no-renames turns a rename into a delete plus an add, so a renamed test
-    file counts as new and the old path is ignored like any deleted file.
+    file counts as new, and the gate treats the old path like any deleted file.
     """
     out = git(repo, "diff", "--name-status", "--no-renames", "-z", base, head)
     fields = out.split("\0")

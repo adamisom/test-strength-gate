@@ -26,12 +26,12 @@ Source: brief for base, build for head.
 
 ## 3. Finding test files with the git diff and glob patterns
 
-Source: brief, with details from the build.
+Source: brief, with details from the build. Changed after the Codex re-review, round 2, in commit `75f4da1` (decision 34).
 
 - **Context.** The tool needs the list of test files the PR changed.
-- **Choice.** It runs `git diff --name-status --no-renames -z` and keeps the paths that match the patterns. Deleted files are ignored. A pattern without a slash matches the file name in any directory, and a pattern with a slash matches from the repository root, as in `.gitignore`. The glob matcher is a small function that turns `*`, `**/` and `?` into a regular expression.
+- **Choice.** It runs `git diff --name-status --no-renames -z` and keeps the paths that match the patterns. Deleted files used to be ignored. Since `75f4da1`, the gate records them, and it removes the ones that match the patterns from the base run. A pattern without a slash matches the file name in any directory, and a pattern with a slash matches from the repository root, as in `.gitignore`. The glob matcher is a small function that turns `*`, `**/` and `?` into a regular expression.
 - **Alternatives.** `fnmatch`, or `PurePath.full_match`.
-- **Why.** `fnmatch` lets `*` match `/`, so `tests/*.py` would also match files in subdirectories, and `full_match` needs Python 3.13. With `--no-renames`, a renamed test file is a delete plus an add, so its tests count as new, and the tool doesn't need extra code for renames. `-z` keeps paths with spaces intact.
+- **Why.** `fnmatch` lets `*` match `/`, so `tests/*.py` would also match files in subdirectories, and `full_match` needs Python 3.13. With `--no-renames`, a renamed test file is a delete plus an add, so its tests count as new, the old path is removed from the base run when it matches the patterns, and the tool doesn't need extra code for renames. `-z` keeps paths with spaces intact.
 
 ## 4. Judging against the merge-base
 
@@ -79,7 +79,7 @@ Source: changed during the build, then confirmed by research.
 
 - **Before.** The brief said to run pytest on the judged node IDs.
 - **Evidence.** In a quick experiment with pytest 9.1.1, passing one node ID that doesn't exist made pytest print `ERROR: not found`, exit with code 4, and run none of the other tests. An ID can be missing at base when its parameter values come from source code the PR changed, e.g., a list of enum members. The research note found the same, and also that one collection error stops the whole session with exit code 2 unless `--continue-on-collection-errors` is passed.
-- **Choice.** The tool passes the changed test files to pytest with `--continue-on-collection-errors`, and the plugin reads the wanted IDs from a file and deselects every other test in `pytest_collection_modifyitems`. A wanted test that never shows up at base is inconclusive, with the reason "not collected at base".
+- **Choice.** The tool passes whole test files to pytest with `--continue-on-collection-errors`. The collect-only runs get the changed `.py` test files other than `conftest.py`, and the judging runs get only the files that hold a judged test. The plugin reads the wanted IDs from a file and deselects every other test in `pytest_collection_modifyitems`. A wanted test that never shows up at base is inconclusive, with the reason "not collected at base".
 - **Alternatives.** Pass node IDs and retry file by file when pytest exits with code 4.
 - **Why.** One missing test can't hide the results of the others, and only the judged tests run.
 
