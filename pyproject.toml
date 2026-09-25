@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "test-strength-gate"
+version = "0.1.0"
+description = "Check whether a PR's new tests would have caught the absence of its source change."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+test-strength-gate = "test_strength_gate.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/test_strength_gate"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
