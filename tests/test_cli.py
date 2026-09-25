@@ -253,6 +253,27 @@ def test_non_assertion_strong_says_where_it_was_raised(repo):
     assert "raised at tests/test_lib.py:7" in check.reason
 
 
+def test_changed_data_file_outside_the_patterns_is_named_at_the_top_of_the_report(repo, tmp_path):
+    # Codex re-review, remaining 3. The PR only refactors total(), but it also
+    # renames a key in a data file outside tests/. The base run reads the old
+    # file, fails with KeyError, and the test looks strong. No exception rule
+    # can see this, so the report must name the file where a reviewer looks.
+    base = repo.commit({"lib.py": "def total(xs):\n    return sum(xs)\n", "data/cases.json": '{"items": [1, 2]}\n',
+                        "docs/guide.md": "old\n"})
+    head = repo.commit({"lib.py": "def total(xs):\n    return sum(x for x in xs)\n",
+                        "data/cases.json": '{"values": [1, 2]}\n', "docs/guide.md": "new\n",
+                        "tests/test_total.py": "import json, lib\n\ndef test_total():\n"
+                        "    case = json.load(open('data/cases.json'))\n    assert lib.total(case['values']) == 3\n"})
+    result = repo.gate(base, head)
+    [test] = result.tests
+    assert test.verdict == STRONG and "inspect the cause" in test.reason
+    assert result.other_files == ["data/cases.json"]  # docs are left out
+    out = tmp_path / "r.md"
+    cli(repo, base, head, "--markdown", str(out))
+    top = out.read_text().split("| Test |")[0]
+    assert "`data/cases.json`" in top and "old version" in top
+
+
 def test_argument_type_error_inside_the_old_code_says_the_cause_is_unclear(repo):
     # Codex review finding 3. The old total() calls _sum() without an argument
     # it needs. That is a bug the test catches, not a new API, but Python's

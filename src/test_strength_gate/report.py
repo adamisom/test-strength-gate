@@ -71,10 +71,24 @@ PR_KIND_NOTES = {
 }
 
 
+def _other_files_note(paths, limit=10):
+    shown = ", ".join(f"`{_cell(p)}`" for p in paths[:limit])
+    if len(paths) > limit:
+        shown += f" and {len(paths) - limit} more"
+    n = len(paths)
+    return (f"**Check these inputs before trusting a strong verdict.** The PR changes {n} "
+            f"non-Python file{'s' * (n != 1)} outside the test patterns: {shown}. The base run used "
+            f"{'their' if n != 1 else 'its'} old version. A test that reads one of them can fail at base for a "
+            f"reason unrelated to the source change and still come out strong. If they are test data, "
+            f"add a --test-glob that matches them.")
+
+
 def to_markdown(result):
     lines = ["## Test strength gate", "", summary_line(result.tests), ""]
     if result.tests and result.pr_kind in PR_KIND_NOTES:
         lines += [PR_KIND_NOTES[result.pr_kind], ""]
+    if result.other_files and any(t.verdict == STRONG for t in result.tests):
+        lines += [_other_files_note(result.other_files), ""]
     lines += [f"Base `{result.base[:10]}`, head `{result.head[:10]}`. Changed test files: "
               f"{len(result.test_files)}. Changed Python source files: {len(result.source_files)}.", ""]
     if result.tests:

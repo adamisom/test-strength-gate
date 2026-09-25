@@ -205,6 +205,17 @@ def test_a_head_run_that_fails_as_a_whole_is_inconclusive_not_broken():
     assert "at head" in reason and "pytest timed out after 900 seconds" in reason
 
 
+def test_strong_from_another_exception_is_worded_as_conditional():
+    # Codex re-review, remaining 3. The verdict rule is unchanged, but the
+    # reason must not sound conclusive: the reviewer has to check the cause.
+    base = summarize({"call": {**phase("failed", "KeyError", "'total'"), "raised_at": "src/app.py:7",
+                               "raised_inside": True, "local_at": "src/app.py:7"}})
+    label, reason = verdict(base, PASSED)
+    assert label == STRONG
+    assert reason == ("Fails at base with KeyError raised at src/app.py:7: 'total'. Not a check, "
+                      "so inspect the cause: this is strong only if the old code caused it.")
+
+
 def judged(verdict_, kind="added"):
     return JudgedTest("t.py::x", kind, PASSED, PASSED, verdict_, "")
 

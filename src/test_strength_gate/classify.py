@@ -191,7 +191,11 @@ def verdict(base, head):
     if kind == "missing_api":
         return INCONCLUSIVE, (f"Fails at base with {base.exc_type}, which usually means the new API "
                               f"doesn't exist yet: {_short(base.message)}")
-    # Not an assertion, so show where it was raised: in the old code, in the
-    # test's own code, or in a library. A reviewer can then check the cause.
-    where = f", {base.location()}" if base.location() else ""
-    return STRONG, f"Fails at base with {base.exc_type} (not an assertion{where}): {_short(base.message)}"
+    # Not an assertion. Calling it strong is a heuristic: it is right when the
+    # old code caused the exception, and wrong when something else differed
+    # between the runs, such as a changed data file outside the patterns. So
+    # the reason says where it was raised and asks the reviewer to check.
+    where = f" {base.location()}" if base.location() else ""
+    message = f": {_short(base.message)}" if base.message.strip() else ""
+    return STRONG, (f"Fails at base with {base.exc_type}{where}{message}. Not a check, so inspect the cause: "
+                    f"this is strong only if the old code caused it.")

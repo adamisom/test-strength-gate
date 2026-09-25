@@ -31,6 +31,7 @@ class GateResult:
     head: str
     test_files: list = field(default_factory=list)
     source_files: list = field(default_factory=list)  # changed .py files that are not tests
+    other_files: list = field(default_factory=list)   # changed non-Python inputs outside the patterns
     tests: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
 
@@ -52,6 +53,11 @@ def _set_origin(outcome, globs):
         outcome.origin = ("library" if not outcome.raised_inside
                           else "test" if matches_any(path, globs) else "project")
     return outcome
+
+
+def _is_docs(path):
+    """Files that tests almost never read, left out of the changed-inputs note."""
+    return path.endswith((".md", ".rst")) or path.startswith(("docs/", ".github/"))
 
 
 def _misrouted_message(misrouted):
@@ -78,6 +84,8 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
                 result.test_files.append(path)
         elif path.endswith(".py"):
             result.source_files.append(path)
+        elif status != "D" and not _is_docs(path):
+            result.other_files.append(path)
     # conftest.py files and non-Python files that match the patterns (data
     # fixtures such as tests/**/*.json) are copied to base, but they hold no
     # tests to collect, and pytest exits with "no match" if given one.
