@@ -53,6 +53,14 @@ def test_fingerprint_ignores_comments_and_formatting():
     assert function_fingerprint(SOURCE, parts) == function_fingerprint(reformatted, parts)
 
 
+def test_fingerprint_ignores_docstring_edits():
+    source = "def test_d():\n    \"\"\"Old words.\"\"\"\n    assert 1\n"
+    parts = ["test_d"]
+    assert function_fingerprint(source, parts) == function_fingerprint(source.replace("Old", "New"), parts)
+    assert function_fingerprint(source, parts) == function_fingerprint("def test_d():\n    assert 1\n", parts)
+    assert function_fingerprint(source, parts) != function_fingerprint(source.replace("1", "2"), parts)
+
+
 def test_fingerprint_sees_decorator_changes():
     changed = SOURCE.replace("[1, 2]", "[1, 2, 3]")
     parts = ["TestThing", "test_n"]

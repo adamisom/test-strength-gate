@@ -1,6 +1,6 @@
 # test-strength-gate
 
-Status: v0 spike. It works end to end on Python and pytest, and it has not been used on real pull requests yet.
+Status: v0 spike. It works end to end on Python and pytest, and it has been tried on nine merged pull requests from open-source projects.
 
 test-strength-gate checks whether a pull request's new tests would have caught the absence of its source change. It runs the tests the PR added or modified against the old code, with only the PR's test files copied in. For each test it reports whether the test fails there (good), passes there (a reviewer should look), or fails for a reason that says little, such as a missing import.
 
@@ -99,8 +99,8 @@ python examples/demo.py
 
 - **Refactors.** A pure refactor leaves the behavior unchanged, so all its tests pass at base and come out weak. The report notes this, but it can't tell a refactor from a feature whose tests don't test it.
 - **Flaky tests.** A flaky test can land in any bucket by chance. v0 runs each test once and doesn't retry.
-- **New fixtures and data files.** Files that match the test patterns travel with the tests. A new data file or helper outside them stays at its base version or is missing, which usually makes the test inconclusive. A changed fixture can also change a test's result for reasons unrelated to the source change, and v0 doesn't judge a test whose only change is in a fixture it uses.
-- **Installed packages.** The tool puts each worktree's root and `src/` first on `sys.path`, so an installed or editable copy of your project doesn't hide the base code. If your code lives somewhere else, the plugin notices that project modules came from outside the worktree and marks the base run inconclusive. Compiled extensions are not rebuilt at base.
+- **New fixtures and data files.** Files that match the test patterns travel with the tests. To bring data files along, add a pattern such as `tests/**`. Files that don't end in `.py` are copied but not passed to pytest. A new data file or helper outside them stays at its base version or is missing, which usually makes the test inconclusive. A changed fixture can also change a test's result for reasons unrelated to the source change, and v0 doesn't judge a test whose only change is in a fixture it uses.
+- **Installed packages.** The tool puts each worktree's root and `src/` first on `sys.path`, so an installed or editable copy of your project doesn't hide the base code. Git-ignored `.py` files in the checkout, such as a `version.py` that hatch-vcs or setuptools-scm writes at install time, are copied into both worktrees. If your code lives somewhere else, the plugin notices that project modules came from outside the worktree and marks the base run inconclusive. Compiled extensions are not rebuilt at base.
 - **Python and pytest only.** Other languages and test runners are not supported. Tests run from the repository root, and pytest-xdist is untested.
 - **What strong means.** A strong test depends on the change. That doesn't prove it checks the right behavior or checks it thoroughly.
 

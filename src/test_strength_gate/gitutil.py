@@ -1,5 +1,6 @@
 """Thin wrappers around the git commands the gate needs."""
 
+import shutil
 import subprocess
 from contextlib import contextmanager
 from pathlib import Path
@@ -58,3 +59,31 @@ def worktree(repo, rev, path):
 def checkout_files(worktree_path, rev, paths):
     if paths:
         git(worktree_path, "checkout", rev, "--", *paths)
+
+
+def ignored_python_files(repo):
+    """Git-ignored .py files in the checkout, outside ignored directories.
+
+    Build tools write files such as a package's version.py (hatch-vcs,
+    setuptools-scm) into the checkout during `pip install`, and git ignores
+    them, so a fresh worktree lacks them and the package fails to import.
+    `--directory` collapses an ignored directory (a virtualenv, build/) to a
+    single entry ending in '/', so only loose files come back.
+    """
+    out = git(repo, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
+    return [p for p in out.split("\0") if p.endswith(".py")]
+
+
+def copy_generated_files(repo, worktree_path, paths):
+    """Copy `paths` from the checkout into the worktree where their folder exists there.
+
+    Returns the paths copied. A file whose folder is not in the worktree
+    (it is not tracked at that commit) is left out.
+    """
+    copied = []
+    for rel in paths:
+        target = Path(worktree_path) / rel
+        if target.parent.is_dir() and not target.exists():
+            shutil.copy2(Path(repo) / rel, target)
+            copied.append(rel)
+    return copied

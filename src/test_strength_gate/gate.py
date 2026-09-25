@@ -64,8 +64,11 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
                 result.test_files.append(path)
         elif path.endswith(".py"):
             result.source_files.append(path)
-    # conftest.py files are copied to base, but they hold no tests to collect.
-    targets = [p for p in result.test_files if PurePosixPath(p).name != "conftest.py"]
+    # conftest.py files and non-Python files that match the patterns (data
+    # fixtures such as tests/**/*.json) are copied to base, but they hold no
+    # tests to collect, and pytest exits with "no match" if given one.
+    targets = [p for p in result.test_files
+               if p.endswith(".py") and PurePosixPath(p).name != "conftest.py"]
     if not targets:
         return result
 
@@ -79,6 +82,12 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
     with tempfile.TemporaryDirectory(prefix="tsg-") as tmp, \
             gitutil.worktree(repo, head_sha, Path(tmp) / "head") as head_wt, \
             gitutil.worktree(repo, base_sha, Path(tmp) / "base") as base_wt:
+        generated = gitutil.ignored_python_files(repo)
+        copied = gitutil.copy_generated_files(repo, head_wt, generated)
+        copied += gitutil.copy_generated_files(repo, base_wt, generated)
+        if copied:
+            result.warnings.append("Copied git-ignored files from the checkout into the worktrees "
+                                   "(usually generated at install time): " + ", ".join(sorted(set(copied))))
         head_collect = run(head_wt, targets, collect_only=True)
         base_collect = run(base_wt, base_targets, collect_only=True) if base_targets else None
         for file, message in head_collect["collect_errors"].items():

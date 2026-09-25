@@ -195,3 +195,31 @@ Source: build.
 - **Fixture-only changes.** A test whose function is unchanged but whose fixture changed is not judged. The research note suggests listing changed fixtures and judging the tests that use them by name.
 - **PR comments.** The report goes only to the job summary and annotations. A PR comment needs a write token, which fork PRs don't get.
 - **Timeout option.** The 900-second limit per pytest run is fixed in the code.
+
+## 21. Copy git-ignored generated files into the worktrees
+
+Source: changed after the first evaluation on real pull requests.
+
+- **Before.** The worktrees held only tracked files.
+- **Evidence.** On plumbum #724, every test file failed to import at head with `No module named 'plumbum.version'`, so nothing was judged. plumbum uses hatch-vcs, which writes `plumbum/version.py` into the checkout during `pip install`, and git ignores that file, so a fresh worktree doesn't have it. setuptools-scm does the same thing, so many projects will hit it.
+- **Choice.** After creating the worktrees, the gate lists the git-ignored `.py` files in the checkout with `git ls-files --others --ignored --exclude-standard --directory`. The `--directory` flag reports an ignored folder, such as a virtualenv or `build/`, as one entry, so only loose files come back. The gate copies each file into a worktree when its folder exists there and the file doesn't, and it lists the copied files in the report's warnings.
+- **Alternatives.** A `--copy` option for the user to name the files, or rebuilding the version file in each worktree.
+- **Why.** The copy needs no setup from the user, and the head test run already imports the same file from the checkout. A test covers it (`test_generated_version_file_is_copied_into_worktrees`).
+
+## 22. Docstring edits don't make a test modified
+
+Source: changed after the first evaluation on real pull requests.
+
+- **Before.** The fingerprint from decision 6 included the docstring, so a test whose docstring was the only change counted as modified and was judged.
+- **Evidence.** On instructor #1857, `test_validate_model_json_error` changed only its docstring and a comment, and it came out weak at base, which added a false signal to the report.
+- **Choice.** `function_fingerprint` drops the function's docstring before `ast.dump`.
+- **Why.** A docstring doesn't change what the test does, just as a comment doesn't. A unit test covers it (`test_fingerprint_ignores_docstring_edits`).
+
+## 23. Only .py files go to pytest
+
+Source: changed after the first evaluation on real pull requests.
+
+- **Before.** Every changed file that matched the patterns, except `conftest.py`, was passed to pytest.
+- **Evidence.** On robotframework-robocop #1764, the PR adds `.robot` fixture files under `tests/`. With `--test-glob 'tests/**'` to bring them along, the gate passed `test_types.robot` to pytest, and pytest stopped with `ERROR: not found ... (no match in any of [<Dir source>])` and exit code 4, so no test was judged. pytest reports this for a file whose name starts with `test_` but isn't a Python test module.
+- **Choice.** Matched files that don't end in `.py` are still copied to base, but only `.py` files are passed to pytest.
+- **Why.** The patterns decide which files travel with the tests, and pytest only collects Python files. A test covers it (`test_non_python_fixtures_are_copied_but_not_collected`).

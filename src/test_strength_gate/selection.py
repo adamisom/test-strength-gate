@@ -60,7 +60,9 @@ def function_fingerprint(source, parts):
 
     The fingerprint is ast.dump of the function node, which includes its
     decorators (so a changed @parametrize counts) and ignores comments,
-    blank lines and line numbers (so reformatting does not count).
+    blank lines and line numbers (so reformatting does not count). The
+    function's docstring is dropped too, since editing it doesn't change what
+    the test does.
     """
     if source is None or not parts:
         return None
@@ -75,6 +77,9 @@ def function_fingerprint(source, parts):
         if node is None:
             return None
         body = node.body
+    if (body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)):
+        node.body = body[1:]
     return ast.dump(node)
 
 

@@ -152,3 +152,30 @@ def test_action_style_shallow_merge_commit(repo, tmp_path):
     result = run_gate(clone, "HEAD^1", "HEAD", python=sys.executable)
     assert result.test_files == ["tests/test_half.py"]
     assert [t.verdict for t in result.tests] == [STRONG]
+
+
+def test_generated_version_file_is_copied_into_worktrees(repo):
+    # hatch-vcs and setuptools-scm write mypkg/version.py into the checkout at
+    # install time, and git ignores it, so a bare worktree can't import mypkg.
+    base = repo.commit({".gitignore": "mypkg/version.py\n.venv/\n",
+                        "mypkg/__init__.py": "from .version import v\n\ndef double(x):\n    return x + x + 1\n"})
+    head = repo.commit({"mypkg/__init__.py": "from .version import v\n\ndef double(x):\n    return x + x\n",
+                        "tests/test_pkg.py": "import mypkg\n\ndef test_d():\n    assert mypkg.double(2) == 4\n"})
+    repo.write({"mypkg/version.py": "v = '1.0'\n", ".venv/lib/site.py": "x = 1\n"})
+    result = repo.gate(base, head)
+    assert [t.verdict for t in result.tests] == [STRONG]
+    assert any("mypkg/version.py" in w and ".venv" not in w for w in result.warnings)
+
+
+def test_non_python_fixtures_are_copied_but_not_collected(repo):
+    # A PR adds a data file under tests/ that its new test reads. With a glob
+    # that matches it, the file travels to base but is not passed to pytest.
+    base = repo.commit(SRC_BASE)
+    head = repo.commit({**SRC_HEAD, "tests/data/test_case.robot": "3\n",
+                        "tests/test_data.py": "import lib, pathlib\n\ndef test_half_from_file():\n"
+                        "    n = int((pathlib.Path(__file__).parent / 'data' / 'test_case.robot').read_text())\n"
+                        "    assert lib.half(n) == 1.5\n"})
+    result = repo.gate(base, head, globs=["tests/**"])
+    assert sorted(result.test_files) == ["tests/data/test_case.robot", "tests/test_data.py"]
+    assert [t.verdict for t in result.tests] == [STRONG]
+    assert result.warnings == []
