@@ -178,8 +178,10 @@ def test_attribute_error_on_none_is_behavior_so_strong(by_id):
 
 
 def test_c_new_keyword_argument_is_inconclusive(by_id):
+    t = by_id["test_calc.py::test_add_three"]
     check(by_id, "test_calc.py::test_add_three", INCONCLUSIVE)
-    assert by_id["test_calc.py::test_add_three"].base.exc_type == "TypeError"
+    assert (t.base.exc_type, t.base.origin) == ("TypeError", "test")
+    assert "usually means the new API" in t.reason
 
 
 def test_d_new_module_collection_error_is_inconclusive(by_id):

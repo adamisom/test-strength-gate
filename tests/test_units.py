@@ -101,6 +101,16 @@ def test_failure_kind(exc_type, message, kind):
     assert failure_kind(exc_type, message) == kind
 
 
+@pytest.mark.parametrize("origin, kind", [
+    ("test", "missing_api"),       # the test's own call has the wrong arguments
+    ("library", "missing_api"),    # e.g. a library decorator's wrapper passed them on
+    ("", "missing_api"),           # unknown
+    ("project", "unclear_call"),   # the old code's own call: new API or old bug
+])
+def test_argument_type_error_depends_on_where_it_was_raised(origin, kind):
+    assert failure_kind("TypeError", "f() missing 1 required positional argument: 'b'", origin=origin) == kind
+
+
 @pytest.mark.parametrize("owner, kind", [
     ("module", "missing_api"),    # calc.new_func
     ("class", "missing_api"),     # Thing.new_classmethod

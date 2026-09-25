@@ -20,13 +20,18 @@ MISSING_API_ERRORS = {"ImportError", "ModuleNotFoundError", "NameError"}
 
 # A TypeError whose message is about the call signature means the same thing,
 # e.g. a new keyword argument. Other TypeErrors are treated as behavior.
+# Python raises it in the frame that made the call, so when that frame is in
+# the project's own code rather than in the test, the old code may simply have
+# called something wrongly. The verdict stays inconclusive, but the reason
+# says the cause is unclear. (A decorator's *args/**kwargs wrapper in the
+# project raises there too, for a real new keyword, so this can't be strong.)
 ARGUMENT_MISMATCH = re.compile(
     r"unexpected keyword argument|positional argument|required (?:keyword|positional)"
     r"|takes no arguments|takes \d+|missing \d+ required"
 )
 
 
-def failure_kind(exc_type, message, attr_owner=None, file_at_head=False):
+def failure_kind(exc_type, message, attr_owner=None, file_at_head=False, origin=""):
     """Say what a call-phase failure at base tells us about the test.
 
     Returns one of:
@@ -34,13 +39,17 @@ def failure_kind(exc_type, message, attr_owner=None, file_at_head=False):
       "missing_api"  the test used an API base doesn't have (INCONCLUSIVE)
       "missing_file" the test read a file that exists at head but not in the
                      base run, e.g. a data file the PR adds (INCONCLUSIVE)
+      "unclear_call" a TypeError about arguments raised inside the project's
+                     code: a new API or a bug in the old code (INCONCLUSIVE)
       "other_error"  base raised some other exception; the test still saw
                      base behave differently from head (STRONG)
 
     attr_owner is what kind of object lacked the attribute, for an
     AttributeError: module, class, object, builtin, or None if unknown.
     file_at_head is True for a FileNotFoundError whose path exists in the
-    head commit.
+    head commit. origin is where the exception was raised: test (a file that
+    matches the test patterns), project (any other file in the worktree),
+    library (outside the worktree), or "" if unknown.
     """
     # pytest.raises(...) failing with "DID NOT RAISE", and pytest.fail(),
     # both raise pytest's Failed exception. Both are checks that failed.
@@ -58,7 +67,7 @@ def failure_kind(exc_type, message, attr_owner=None, file_at_head=False):
         # behavior. Unknown owners (monkeypatch, mock.patch) count as missing.
         return "other_error" if attr_owner == "builtin" else "missing_api"
     if exc_type == "TypeError" and ARGUMENT_MISMATCH.search(message or ""):
-        return "missing_api"
+        return "unclear_call" if origin == "project" else "missing_api"
     return "other_error"
 
 
@@ -76,6 +85,7 @@ class Outcome:
     raised_at: str = ""      # "path:line" of the frame that raised
     raised_inside: bool = False  # that frame is a file in the worktree, not a library
     local_at: str = ""       # "path:line" of the last frame in the worktree
+    origin: str = ""         # set by the gate from raised_at: test, project, library
 
     def location(self):
         """Where the exception came from, for the reason text."""
@@ -149,10 +159,14 @@ def verdict(base, head):
                 "misrouted": "The base run loaded project code from outside the base worktree"}[base.phase]
         return INCONCLUSIVE, f"{what}: {_short(base.message)}"
 
-    kind = failure_kind(base.exc_type, base.message, base.attr_owner or None, base.file_at_head)
+    kind = failure_kind(base.exc_type, base.message, base.attr_owner or None, base.file_at_head, base.origin)
     if kind == "missing_file":
         return INCONCLUSIVE, (f"Fails at base because it reads {base.missing_path}, which exists at head but "
                               f"not in the base run. If it is test data, add a --test-glob that matches it.")
+    if kind == "unclear_call":
+        return INCONCLUSIVE, (f"Fails at base with a TypeError about arguments raised inside the base code at "
+                              f"{base.raised_at}. The test may call a new API, or the old code may call something "
+                              f"wrongly, which would be a real failure: {_short(base.message)}")
     if kind == "assertion":
         return STRONG, f"Fails at base on a check: {_short(base.message) or base.exc_type}"
     if kind == "missing_api":

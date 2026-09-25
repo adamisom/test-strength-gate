@@ -99,7 +99,7 @@ Source: brief, widened during the build and after research.
 - **Choice.** `failure_kind` in `classify.py` holds all the exception rules in one place.
   - AssertionError and pytest's `Failed` are strong.
   - ImportError, ModuleNotFoundError and NameError are inconclusive.
-  - A TypeError whose message matches the signature patterns, such as "unexpected keyword argument", is inconclusive.
+  - A TypeError whose message matches the signature patterns, such as "unexpected keyword argument", is inconclusive. Decision 26 changed its reason when the old project code raised it.
   - AttributeError depends on the object, as decision 11 explains.
   - Any other exception, such as a ValueError or KeyError, is strong, and the reason says it was not an assertion.
   - A FileNotFoundError for a file that exists at head is inconclusive. Decision 24 added this.
@@ -252,3 +252,13 @@ Source: build, after the Codex review (finding 2). The verdict rule from decisio
 
 - **Choice.** The rule stays. The plugin now records the innermost frame of the traceback and the innermost frame inside the worktree, and the reason for a strong verdict from another exception says where it was raised, e.g., "raised at src/pkg/mod.py:95" or "raised in library code called from tests/test_x.py:267". The JSON report has both locations.
 - **Why.** The only systematic cause of a false strong that the review and the scratch cases found is an input that differs between the runs, and decision 24 handles the one the tool can see. Narrowing by exception type or by stack would have turned correct verdicts into inconclusive ones on real pull requests. Showing the location lets a reviewer check each case. Whether to narrow the rule further is left open until there is evidence from more pull requests. A test covers the new reasons (`test_non_assertion_strong_says_where_it_was_raised`).
+
+## 26. A TypeError about arguments raised inside the old code gets an honest reason
+
+Source: build, after the Codex review (finding 3). The verdict is unchanged.
+
+- **Context.** Decision 10 calls a TypeError whose message is about arguments inconclusive, because it usually means the test calls a new signature. Codex pointed out that the old code can itself call a helper with the wrong arguments, and then the test fails because of a real bug that the PR fixes.
+- **Evidence.** A scratch repository reproduced it. The old `total()` calls `_sum(items)` without the `start` argument, the PR passes it, and the new test `assert lib.total([1, 2]) == 3` came out inconclusive with the reason "usually means the new API doesn't exist yet". A quick experiment confirmed where Python raises such an error. It is raised in the frame that makes the call, so a test that passes a new keyword gets the error in the test's own line, and the old code's bad call gets it in the old code. But a decorator's `*args, **kwargs` wrapper in the project also raises it inside project code when a test passes a real new keyword. The evaluation had no TypeError at all, so it can't settle the question.
+- **Choice.** The gate marks where each exception was raised: in a file that matches the test patterns, in another file of the project, or in a library. A TypeError about arguments raised inside the project's own code is still inconclusive, but the reason says so and names the line, and says the test may call a new API or the old code may call something wrongly. Raised in the test or in a library, it keeps the old reason.
+- **Alternatives.** Call the in-project case strong, which would make the decorator case a false strong. Or look up the function named in the message at base and at head and compare their signatures, which is more precise but needs a symbol diff, as pyrite does.
+- **Why.** Goal 2 of the design is never to report a false strong for a missing API, so the ambiguous case stays inconclusive, and the reason no longer claims to know the cause. Tests cover it (`test_argument_type_error_inside_the_old_code_says_the_cause_is_unclear`, `test_argument_type_error_depends_on_where_it_was_raised`).

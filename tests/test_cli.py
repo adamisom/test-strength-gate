@@ -235,3 +235,18 @@ def test_non_assertion_strong_says_where_it_was_raised(repo):
     assert (parse.verdict, check.verdict) == (STRONG, STRONG)
     assert "raised in library code called from lib.py:4" in parse.reason
     assert "raised at tests/test_lib.py:7" in check.reason
+
+
+def test_argument_type_error_inside_the_old_code_says_the_cause_is_unclear(repo):
+    # Codex review finding 3. The old total() calls _sum() without an argument
+    # it needs. That is a bug the test catches, not a new API, but Python's
+    # message looks the same. It stays inconclusive, with an honest reason.
+    base = repo.commit({"lib.py": "def _sum(items, start):\n    return sum(items, start)\n\n"
+                                  "def total(items):\n    return _sum(items)\n"})
+    head = repo.commit({"lib.py": "def _sum(items, start):\n    return sum(items, start)\n\n"
+                                  "def total(items):\n    return _sum(items, 0)\n",
+                        "tests/test_total.py": "import lib\n\ndef test_total():\n    assert lib.total([1, 2]) == 3\n"})
+    [test] = repo.gate(base, head).tests
+    assert (test.verdict, test.base.origin) == (INCONCLUSIVE, "project")
+    assert "inside the base code at lib.py:5" in test.reason
+    assert "usually means the new API" not in test.reason

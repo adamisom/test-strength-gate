@@ -40,6 +40,15 @@ class GateResult:
         return "normal"
 
 
+def _set_origin(outcome, globs):
+    """Mark whether the exception was raised in test code, project code or a library."""
+    if outcome.raised_at:
+        path = outcome.raised_at.rsplit(":", 1)[0]
+        outcome.origin = ("library" if not outcome.raised_inside
+                          else "test" if matches_any(path, globs) else "project")
+    return outcome
+
+
 def _misrouted_message(misrouted):
     return "; ".join(f"`{module}` came from {path}" for module, path in misrouted.items())
 
@@ -119,6 +128,7 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
                                      base_run["collect_errors"].get(file), base_run.get("startup_error"))
             if base_outcome.missing_path:
                 base_outcome.file_at_head = gitutil.show(repo, head_sha, base_outcome.missing_path) is not None
+            _set_origin(base_outcome, globs)
         head_outcome = summarize(head_run["results"].get(test_id),
                                  head_run["collect_errors"].get(file), head_run.get("startup_error"))
         label, reason = verdict(base_outcome, head_outcome)
