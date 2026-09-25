@@ -35,6 +35,10 @@ When a PR changes no Python source outside its tests, or when every judged test 
 
 The action assumes your workflow has already checked out the repository and installed your project's dependencies and pytest. It installs its own package into the same Python and runs.
 
+Supported runners are Linux and macOS, such as `ubuntu-latest` and `macos-latest`, which is where the tool's own tests run in CI. Windows is not supported. The action's steps use bash, which GitHub's Windows runners also have, but the tool has never run on Windows.
+
+The action itself has not yet run as a step in a real workflow. Its shell step is tested locally against a shallow clone of a merge commit (`tests/test_action.py`), and `examples/action-integration.yml` is a workflow, not yet run, that exercises the action with `uses: ./`.
+
 ```yaml
 on:
   pull_request:   # never pull_request_target; see examples/workflow.yml

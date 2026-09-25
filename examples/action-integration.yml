@@ -1,0 +1,92 @@
+# Example integration workflow for the action itself. It has NOT been run yet.
+#
+# To run it, copy it to .github/workflows/action-integration.yml in this
+# repository. On every pull request to this repository, it builds a small toy
+# repository whose last commit is a merge commit, like the one actions/checkout
+# gives on pull_request, and runs the action on it through `uses: ./` with the
+# default base and head. A second run passes inputs by hand. Each run then
+# checks the JSON report. Only Linux and macOS runners are listed, because the
+# tool has never run on Windows.
+#
+# What this does not cover: a real pull request from a fork, and the merge ref
+# that GitHub builds for it. For that, open a pull request against a demo
+# repository that uses the action, and check its job summary and annotations.
+name: Action integration
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  action:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - run: python -m pip install pytest
+
+      # A toy project whose PR fixes half() and refactors double(), merged into
+      # a main branch that moved on, then cloned with depth 2 as checkout does.
+      - name: Build the toy repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global user.name ci
+          git config --global user.email ci@example.com
+          mkdir toy-src && cd toy-src && git init -q -b main
+          printf 'def double(x):\n    return x + x\n\ndef half(x):\n    return x // 2\n' > lib.py
+          git add -A && git commit -qm base
+          git checkout -qb feature
+          printf 'def double(x):\n    return 2 * x\n\ndef half(x):\n    return x / 2\n' > lib.py
+          mkdir tests
+          printf 'import lib\n\ndef test_double():\n    assert lib.double(3) == 6\n\ndef test_half():\n    assert lib.half(3) == 1.5\n' > tests/test_lib.py
+          git add -A && git commit -qm "the PR"
+          git checkout -q main
+          echo "main moved on" > README && git add -A && git commit -qm "main moves"
+          git merge -q --no-ff feature -m merge
+          cd .. && git clone -q --depth 2 "file://$PWD/toy-src" toy
+
+      - name: Run the action with its defaults
+        id: defaults
+        uses: ./
+        with:
+          path: toy
+
+      - name: Run the action with inputs set by hand
+        id: inputs
+        continue-on-error: true   # fail-on weak must fail this step
+        uses: ./
+        with:
+          path: toy
+          base-sha: HEAD^1
+          head-sha: HEAD
+          test-globs: "tests/*.py **/conftest.py"
+          pytest-args: "-o addopts="
+          fail-on: weak
+
+      - name: Check the reports
+        shell: bash
+        env:
+          DEFAULTS_REPORT: ${{ steps.defaults.outputs.json-report }}
+          INPUTS_OUTCOME: ${{ steps.inputs.outcome }}
+        run: |
+          set -euo pipefail
+          python - <<'EOF'
+          import json, os
+          report = json.load(open(os.environ["DEFAULTS_REPORT"]))
+          verdicts = {t["id"]: t["verdict"] for t in report["tests"]}
+          assert verdicts == {"tests/test_lib.py::test_double": "WEAK",
+                              "tests/test_lib.py::test_half": "STRONG"}, verdicts
+          assert os.environ["INPUTS_OUTCOME"] == "failure", "fail-on: weak should fail the step"
+          print("ok")
+          EOF

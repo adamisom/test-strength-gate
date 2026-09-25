@@ -305,3 +305,12 @@ Source: changed after the Codex review (finding 7).
 - **Choice.** Each changed test file that fails to collect at head, or every changed test file when pytest can't start at head, gets one row with the file path as its ID, BROKEN_AT_HEAD as the verdict, and pytest's error line as the reason. The summary line counts these files apart from tests, e.g., "No tests could be judged: 1 changed test file fails to import at head, so its tests were not judged." In a GitHub workflow each such file also gets a warning annotation.
 - **Alternatives.** A separate verdict such as UNJUDGED, which would add a sixth label for a case that already fits "does not pass at head".
 - **Why.** A PR whose new test file doesn't even import should not look like a PR without tests. The row reuses the existing label, and the file path in the ID column tells it apart from a test. Tests cover it (`test_test_file_that_fails_to_import_at_head_gets_its_own_row`, `test_summary_line`).
+
+## 31. Linux and macOS runners only, and a local test of the action's script
+
+Source: build, after the Codex review (finding 8).
+
+- **Context.** Codex noted that `action.yml` uses bash, bash arrays and `set -f`, that the README didn't say which runners work, and that the action had never run as an Action.
+- **Evidence.** Part of the claim is wrong. `shell: bash` also runs on GitHub's Windows runners, through the Git Bash that they ship, so the bash syntax alone doesn't rule Windows out. But the tool's CI runs only on Ubuntu and macOS, and nothing has ever run on Windows. The rest is right: the only evidence for the action's script was a one-time manual run.
+- **Choice.** The README states that Linux and macOS runners are supported and Windows is not. No Windows port. A new test (`tests/test_action.py`) reads the `Run test-strength-gate` step out of `action.yml` and runs it with bash in a `--depth 2` clone of a merge commit, with the inputs and GitHub's variables set the way a runner sets them. It checks the default base and head, the `json-report` output, the job summary, the weak-test annotation, and that `fail-on: weak` fails the step. `examples/action-integration.yml` is a workflow that would run the action with `uses: ./` on a toy merge commit, with defaults and with inputs set by hand. It has not been run, and it can't cover a real pull request from a fork.
+- **Why.** The local test catches breakage in the script on every CI run. A claim that the action works in GitHub needs a real workflow run, which is still to do.
