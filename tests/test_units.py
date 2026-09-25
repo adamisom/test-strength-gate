@@ -5,7 +5,7 @@ import pytest
 from test_strength_gate.classify import (BROKEN_AT_HEAD, INCONCLUSIVE, SKIPPED, STRONG, WEAK,
                                          Outcome, failure_kind, summarize, verdict)
 from test_strength_gate.gate import JudgedTest
-from test_strength_gate.report import summary_line
+from test_strength_gate.report import LEGEND, summary_line
 from test_strength_gate.selection import (DEFAULT_GLOBS, function_fingerprint, matches_any,
                                           pick_judged, split_test_id)
 
@@ -210,3 +210,11 @@ def test_summary_line():
     broken_file = JudgedTest("tests/test_x.py", "added", PASSED, PASSED, BROKEN_AT_HEAD, "")
     assert summary_line([broken_file]) == (
         "No tests could be judged: 1 changed test file fails to import at head, so its tests were not judged.")
+
+
+def test_legend_covers_the_newer_rules():
+    # Codex review finding 9 asked for wording that matches what the tool does.
+    # The legend under every report must mention the missing-file rule and the
+    # file rows for test files that fail to import at head.
+    assert "a file that exists at head but not in the base run" in LEGEND
+    assert "a file path instead of a test" in LEGEND

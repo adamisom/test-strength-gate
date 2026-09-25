@@ -50,7 +50,7 @@ Each test above was run twice, once on the base commit with only the PR's test f
 
 - **STRONG**: fails at base on a check, so it would catch the source change going missing.
 - **WEAK**: passes at base. This is a prompt for a reviewer, not a failure. It is expected for refactors and for tests that pin down existing behavior, but for a bug fix or feature it can mean the test doesn't exercise the change.
-- **INCONCLUSIVE**: fails at base because the code it calls doesn't exist yet (import, attribute or signature errors), or because setup failed. It shows the API is new, not that the behavior is checked.
+- **INCONCLUSIVE**: fails at base because the code it calls doesn't exist yet (import, attribute or signature errors), because it reads a file that exists at head but not in the base run, or because setup failed. It shows the API or input is new, not that the behavior is checked.
 - **BROKEN_AT_HEAD**: does not pass at head, so nothing else about it can be judged. A row with a file path instead of a test is a changed test file that fails to import at head.
 - **SKIPPED**: skipped, so not judged."""
 

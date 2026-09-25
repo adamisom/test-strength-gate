@@ -2,7 +2,7 @@
 
 Status: v0 spike. It works end to end on Python and pytest, and it has been tried on nine merged pull requests from open-source projects.
 
-test-strength-gate checks whether a pull request's new tests would have caught the absence of its source change. It runs the tests the PR added or modified against the old code, with only the PR's test files copied in. For each test it reports whether the test fails there (good), passes there (a reviewer should look), or fails for a reason that says little, such as a missing import.
+test-strength-gate checks whether a pull request's new tests would have caught the absence of its source change. It runs the tests the PR added or modified against the old code, with only the PR's changed test-side files copied in. For each test it reports whether the test fails there (good), passes there (a reviewer should look), or fails for a reason that says little, such as a missing import.
 
 ## Why
 
@@ -12,10 +12,12 @@ Many pull requests written by coding agents are merged without a real review, an
 
 1. It lists the files that changed between the base commit and the head commit, and keeps the ones that match the test file patterns. It uses the merge-base of the two commits, so changes that landed on the base branch later are not counted.
 2. It collects the tests in those files at head and at base, and keeps the tests that are new or whose function changed. It compares functions by their syntax tree, so edits to comments or formatting don't count. For a test method, a change to its class's decorators, base classes, class attributes, setup and teardown methods, or autouse fixtures also counts.
-3. It creates a temporary git worktree at base, copies in the head version of every changed test file (including `conftest.py`), and runs the selected tests. A small pytest plugin records, for each test, the phase that failed and the exception type.
+3. It creates a temporary git worktree at base, copies in the head version of every changed file that matches the test patterns, and runs the selected tests. By default that covers test modules, `conftest.py` files and everything under `tests/`, including data files. A small pytest plugin records, for each test, the phase that failed, the exception type and where it was raised.
 4. It runs the same tests in a worktree at head to confirm they pass there, then labels each test and writes a markdown report and a JSON report.
 
 Your own checkout is never modified.
+
+Only files that match the test patterns travel to base. Any other file the PR adds or changes, such as a data file or a test helper outside `tests/`, stays at its base version or is missing in the base run. A missing file makes a test inconclusive, but a changed one can make a test fail at base for a reason unrelated to the source change, which looks strong. If your tests read such files, add a `--test-glob` pattern for them (see Limits).
 
 ## Verdicts
 
