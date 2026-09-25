@@ -100,6 +100,7 @@ def _short(text, limit=90):
     """First line of a message, trimmed. pytest's assertion messages add '+ where' lines."""
     lines = (text or "").strip().splitlines()
     text = " ".join(lines[0].split()) if lines else ""
+    text = re.sub(r" \((?:/|[A-Za-z]:\\)[^)]*\)$", "", text)  # ImportError's "(/path/to/mod.py)"
     return text if len(text) <= limit else text[: limit - 3] + "..."
 
 

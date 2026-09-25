@@ -1,0 +1,39 @@
+# Example: run test-strength-gate on every pull request.
+# Copy this to .github/workflows/test-strength.yml in your repository.
+#
+# The trigger is pull_request, not pull_request_target. The gate runs the PR's
+# own code (its tests and its source). Under pull_request, a PR from a fork runs
+# with a read-only token and no secrets. Under pull_request_target, the same code
+# would run with the base repository's secrets and a token that can write, so a
+# malicious PR could steal or misuse them. The action refuses to run there.
+name: Test strength
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-strength:
+    runs-on: ubuntu-latest
+    steps:
+      # On pull_request, this checks out the merge commit. Depth 2 fetches it
+      # and both of its parents, which is all the gate needs.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # Install the project's dependencies and pytest, as your test job does.
+      # The gate puts each worktree's root and src/ first on sys.path, so an
+      # installed copy of the project does not hide the base code.
+      - run: pip install -r requirements.txt pytest
+
+      # Replace OWNER with the account that hosts test-strength-gate.
+      - uses: OWNER/test-strength-gate@v0
+        with:
+          fail-on: none   # report only; use "weak" to fail the check

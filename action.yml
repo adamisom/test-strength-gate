@@ -1,0 +1,99 @@
+name: test-strength-gate
+description: >-
+  Run a pull request's new and changed pytest tests against the base code, to
+  see whether they would catch the source change going missing.
+branding:
+  icon: check-circle
+  color: blue
+
+inputs:
+  base-sha:
+    description: >-
+      Base commit. Default is the first parent of the pull_request merge commit
+      that actions/checkout checks out, which is the base branch the merge was built on.
+    required: false
+    default: ''
+  head-sha:
+    description: Head commit. Default is that merge commit itself, which is what the PR would merge.
+    required: false
+    default: ''
+  test-globs:
+    description: Space-separated test file patterns. Default is the tool's list (test_*.py *_test.py tests/**/*.py **/conftest.py).
+    required: false
+    default: ''
+  pytest-args:
+    description: Extra arguments for pytest, e.g. "-o addopts=".
+    required: false
+    default: ''
+  fail-on:
+    description: "'weak' fails the step when any test passes without the source change. 'none' only reports."
+    required: false
+    default: none
+  python:
+    description: Python interpreter that has pytest and the project's dependencies installed.
+    required: false
+    default: python
+  path:
+    description: Path of the checked-out repository.
+    required: false
+    default: '.'
+
+outputs:
+  json-report:
+    description: Path of the JSON report.
+    value: ${{ steps.gate.outputs.json-report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Refuse pull_request_target
+      if: github.event_name == 'pull_request_target'
+      shell: bash
+      run: |
+        echo "::error::test-strength-gate runs the PR's code, so it must not run under pull_request_target. Use the pull_request trigger."
+        exit 1
+
+    - name: Install test-strength-gate
+      shell: bash
+      env:
+        PYTHON_BIN: ${{ inputs.python }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: '"$PYTHON_BIN" -m pip install --quiet "$ACTION_PATH"'
+
+    # Inputs reach the script only through env variables, never by pasting
+    # ${{ }} into the script text, so a crafted value can't inject shell code.
+    - name: Run test-strength-gate
+      id: gate
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        BASE_SHA: ${{ inputs.base-sha }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        TEST_GLOBS: ${{ inputs.test-globs }}
+        PYTEST_ARGS: ${{ inputs.pytest-args }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        PYTHON_BIN: ${{ inputs.python }}
+      run: |
+        set -euo pipefail
+        set -f  # keep the glob patterns from expanding in the loop below
+        if [ -z "$BASE_SHA" ] || [ -z "$HEAD_SHA" ]; then
+          # On pull_request, actions/checkout checks out a merge commit whose first
+          # parent is the base branch and whose second parent is the PR head.
+          if ! git rev-parse --verify --quiet 'HEAD^2' >/dev/null; then
+            echo "::error::HEAD is not a merge commit. Check out the pull_request merge ref with fetch-depth: 2, or pass base-sha and head-sha."
+            exit 1
+          fi
+          if [ -n "$PR_HEAD_SHA" ] && [ "$(git rev-parse 'HEAD^2')" != "$PR_HEAD_SHA" ]; then
+            echo "::warning::The merge commit's second parent is not the PR head commit, so the checkout may be out of date."
+          fi
+          BASE_SHA="${BASE_SHA:-$(git rev-parse 'HEAD^1')}"
+          HEAD_SHA="${HEAD_SHA:-$(git rev-parse HEAD)}"
+        fi
+        report="$RUNNER_TEMP/test-strength-gate"
+        echo "json-report=$report.json" >> "$GITHUB_OUTPUT"
+        args=(--repo . --base "$BASE_SHA" --head "$HEAD_SHA" --fail-on "$FAIL_ON"
+              --json "$report.json" --markdown "$report.md")
+        for glob in $TEST_GLOBS; do args+=(--test-glob "$glob"); done
+        if [ -n "$PYTEST_ARGS" ]; then args+=(--pytest-args "$PYTEST_ARGS"); fi
+        "$PYTHON_BIN" -m test_strength_gate "${args[@]}"
