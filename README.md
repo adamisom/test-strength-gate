@@ -23,7 +23,7 @@ Your own checkout is never modified.
 | --- | --- |
 | STRONG | The test fails at base on an assertion, on a `pytest.raises` that did not raise, or on another exception that shows base behaves differently. It would catch the source change going missing. |
 | WEAK | The test passes at base. This is a signal for a reviewer, not a failure. It is expected for refactors and for tests of existing behavior, but for a bug fix or feature it can mean the test doesn't exercise the change. |
-| INCONCLUSIVE | The test fails at base only because the code it calls doesn't exist there yet, or because the run itself failed. This covers an ImportError, a NameError, an AttributeError on a module, class or project object, a TypeError about arguments, a fixture error, a file that fails to import, and a run that could not start. |
+| INCONCLUSIVE | The test fails at base only because the code it calls doesn't exist there yet, or because the run itself failed. This covers an ImportError, a NameError, an AttributeError on a module, class or project object, a TypeError about arguments, a fixture error, a file that fails to import, and a run that could not start. It also covers a `FileNotFoundError` for a file that exists at head but not in the base run, such as a data file the PR adds outside the test patterns. |
 | BROKEN_AT_HEAD | The test does not pass at head, so nothing else about it can be judged. |
 | SKIPPED | The test was skipped at base or at head. |
 
@@ -85,7 +85,7 @@ test-strength-gate --repo PATH --base SHA --head SHA
                    [--fail-on weak|none] [--python PATH]
 ```
 
-It also runs as `python -m test_strength_gate`. The default test patterns are `test_*.py`, `*_test.py`, `tests/**/*.py` and `**/conftest.py`. A pattern without a slash matches a file name in any directory, and a pattern with a slash matches from the repository root.
+It also runs as `python -m test_strength_gate`. The default test patterns are `test_*.py`, `*_test.py`, `tests/**` and `**/conftest.py`, so data files under `tests/` travel with the tests. A pattern without a slash matches a file name in any directory, and a pattern with a slash matches from the repository root.
 
 The exit code is 0, or 1 when you pass `--fail-on weak` and a test is weak, or 2 when git can't resolve the commits. When `GITHUB_STEP_SUMMARY` is set, the markdown report is appended to it.
 
@@ -99,7 +99,7 @@ python examples/demo.py
 
 - **Refactors.** A pure refactor leaves the behavior unchanged, so all its tests pass at base and come out weak. The report notes this, but it can't tell a refactor from a feature whose tests don't test it.
 - **Flaky tests.** A flaky test can land in any bucket by chance. v0 runs each test once and doesn't retry.
-- **New fixtures and data files.** Files that match the test patterns travel with the tests. To bring data files along, add a pattern such as `tests/**`. Files that don't end in `.py` are copied but not passed to pytest. A new data file or helper outside them stays at its base version or is missing, which usually makes the test inconclusive. A changed fixture can also change a test's result for reasons unrelated to the source change, and v0 doesn't judge a test whose only change is in a fixture it uses.
+- **New fixtures and data files.** Files that match the test patterns travel with the tests, and the default `tests/**` covers everything under `tests/`. Files that don't end in `.py` are copied but not passed to pytest. A data file or helper outside the patterns stays at its base version or is missing. When a test fails at base because it reads a file that exists at head but not in the base run, it is inconclusive. A changed data file outside the patterns is more dangerous, because the test reads the old version at base and can fail there for a reason unrelated to the source change, which looks strong. Add a pattern for such files. A changed fixture can also change a test's result for reasons unrelated to the source change, and v0 doesn't judge a test whose only change is in a fixture it uses.
 - **Installed packages.** The tool puts each worktree's root and `src/` first on `sys.path`, so an installed or editable copy of your project doesn't hide the base code. Git-ignored `.py` files in the checkout, such as a `version.py` that hatch-vcs or setuptools-scm writes at install time, are copied into both worktrees. If your code lives somewhere else, the plugin notices that project modules came from outside the worktree and marks the base run inconclusive. Compiled extensions are not rebuilt at base.
 - **Python and pytest only.** Other languages and test runners are not supported. Tests run from the repository root, and pytest-xdist is untested.
 - **What strong means.** A strong test depends on the change. That doesn't prove it checks the right behavior or checks it thoroughly.

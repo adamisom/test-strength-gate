@@ -102,6 +102,7 @@ Source: brief, widened during the build and after research.
   - A TypeError whose message matches the signature patterns, such as "unexpected keyword argument", is inconclusive.
   - AttributeError depends on the object, as decision 11 explains.
   - Any other exception, such as a ValueError or KeyError, is strong, and the reason says it was not an assertion.
+  - A FileNotFoundError for a file that exists at head is inconclusive. Decision 24 added this.
   - A setup error, a teardown error, a collection error, and a failed run are all inconclusive.
 - **Surprise.** A `pytest.raises` block that doesn't raise fails with `Failed: DID NOT RAISE`, and `Failed` is not a subclass of AssertionError, so the brief's rule would have missed a common kind of strong test. `pytest.fail()` raises the same exception.
 - **Alternatives.** Count only AssertionError as strong, and call other exceptions inconclusive.
@@ -223,3 +224,13 @@ Source: changed after the first evaluation on real pull requests.
 - **Evidence.** On robotframework-robocop #1764, the PR adds `.robot` fixture files under `tests/`. With `--test-glob 'tests/**'` to bring them along, the gate passed `test_types.robot` to pytest, and pytest stopped with `ERROR: not found ... (no match in any of [<Dir source>])` and exit code 4, so no test was judged. pytest reports this for a file whose name starts with `test_` but isn't a Python test module.
 - **Choice.** Matched files that don't end in `.py` are still copied to base, but only `.py` files are passed to pytest.
 - **Why.** The patterns decide which files travel with the tests, and pytest only collects Python files. A test covers it (`test_non_python_fixtures_are_copied_but_not_collected`).
+
+## 24. Data files under tests/ travel by default, and a file missing only at base is inconclusive
+
+Source: changed after the Codex review (finding 1).
+
+- **Before.** The default patterns were `test_*.py`, `*_test.py`, `tests/**/*.py` and `**/conftest.py`, so a data file the PR added under `tests/` stayed behind, and the base run raised `FileNotFoundError` when the test read it. Decision 10 called any exception other than the listed ones strong, so the test came out strong without ever checking the old code. The evaluation described this as open bug 5.
+- **Evidence.** A scratch repository reproduced it. The PR refactors `double()` without changing its behavior and adds `tests/data/expected.json` with a test that reads it. The gate on main called the test STRONG with `FileNotFoundError`. A second scratch case showed a related false strong that no exception rule can catch: the PR changes an existing data file outside the patterns, the base run reads the old version, and the test fails with a `KeyError`. The same thing would happen with an assertion, so the fix has to be about copying inputs, not about exception types.
+- **Choice.** The default pattern `tests/**/*.py` became `tests/**`. Decision 23 already copies non-Python matches without passing them to pytest, so the wider pattern is safe. The plugin records the path of a `FileNotFoundError` when it is inside the worktree, and the gate checks whether that path exists in the head commit. If it does, the test is inconclusive, and the reason names the file and suggests a pattern. A `FileNotFoundError` for a file the head commit doesn't have either still counts as strong, because then the old code failed to create or find something the new code handles.
+- **Alternatives.** Call every `OSError` inconclusive. That would also hide a real fix, such as code that used to crash on a missing config file and now falls back to defaults.
+- **Why.** The wider default removes the common case, and the head-commit check catches the rest without guessing from the exception type alone. Three tests cover it (`test_new_data_file_under_tests_travels_with_the_default_globs`, `test_file_missing_at_base_but_present_at_head_is_inconclusive`, and `test_file_missing_at_both_base_and_head_commits_stays_strong`). On the evaluation it changed no verdicts, since robocop's fixtures already travelled under `--test-glob 'tests/**'` and its default-globs run gave the same verdicts.

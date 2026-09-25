@@ -4,7 +4,9 @@ import ast
 import re
 from pathlib import PurePosixPath
 
-DEFAULT_GLOBS = ["test_*.py", "*_test.py", "tests/**/*.py", "**/conftest.py"]
+# tests/** also matches data files under tests/, so they travel to base with
+# the tests. Only the .py files among them are passed to pytest.
+DEFAULT_GLOBS = ["test_*.py", "*_test.py", "tests/**", "**/conftest.py"]
 
 
 def _glob_to_regex(pattern):

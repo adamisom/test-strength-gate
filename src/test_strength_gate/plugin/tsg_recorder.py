@@ -13,7 +13,7 @@ Settings come from environment variables:
 The JSON has four keys:
   items           IDs of collected (and selected) tests
   collect_errors  {file: last error line} for files that failed to import
-  results         {id: {phase: {outcome, exc_type, message, attr_owner, xfail}}}
+  results         {id: {phase: {outcome, exc_type, message, attr_owner, missing_path, xfail}}}
   misrouted       {module: path} for project modules imported from outside the worktree
 """
 
@@ -96,6 +96,21 @@ def _attr_owner(exc):
     return "object"
 
 
+def _missing_path(exc):
+    """For a FileNotFoundError on a path inside the worktree, that path, relative to it.
+
+    The gate uses it to tell a file the PR adds (and the base run lacks) from
+    a file the code under test failed to create.
+    """
+    if not isinstance(exc, FileNotFoundError) or not isinstance(exc.filename, (str, bytes, os.PathLike)):
+        return None
+    try:
+        path = Path(os.path.abspath(os.fsdecode(exc.filename))).resolve()
+        return path.relative_to(_ROOT).as_posix()
+    except (ValueError, OSError):
+        return None
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     # The exception type is only available here, on the worker that ran the
@@ -109,6 +124,7 @@ def pytest_runtest_makereport(item, call):
         "exc_type": exc.type.__name__ if exc else None,
         "message": str(exc.value)[:500] if exc else None,
         "attr_owner": _attr_owner(exc.value) if exc else None,
+        "missing_path": _missing_path(exc.value) if exc else None,
         "xfail": hasattr(report, "wasxfail"),
     }))
 
@@ -123,6 +139,7 @@ def pytest_runtest_logreport(report):
         "exc_type": info["exc_type"],
         "message": info["message"],
         "attr_owner": info["attr_owner"],
+        "missing_path": info["missing_path"],
         "xfail": info["xfail"],
     }
 

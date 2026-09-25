@@ -26,17 +26,21 @@ ARGUMENT_MISMATCH = re.compile(
 )
 
 
-def failure_kind(exc_type, message, attr_owner=None):
+def failure_kind(exc_type, message, attr_owner=None, file_at_head=False):
     """Say what a call-phase failure at base tells us about the test.
 
     Returns one of:
-      "assertion"   the test checked a result and it was wrong (STRONG)
-      "missing_api" the test used an API base doesn't have (INCONCLUSIVE)
-      "other_error" base raised some other exception; the test still saw
-                    base behave differently from head (STRONG)
+      "assertion"    the test checked a result and it was wrong (STRONG)
+      "missing_api"  the test used an API base doesn't have (INCONCLUSIVE)
+      "missing_file" the test read a file that exists at head but not in the
+                     base run, e.g. a data file the PR adds (INCONCLUSIVE)
+      "other_error"  base raised some other exception; the test still saw
+                     base behave differently from head (STRONG)
 
     attr_owner is what kind of object lacked the attribute, for an
     AttributeError: module, class, object, builtin, or None if unknown.
+    file_at_head is True for a FileNotFoundError whose path exists in the
+    head commit.
     """
     # pytest.raises(...) failing with "DID NOT RAISE", and pytest.fail(),
     # both raise pytest's Failed exception. Both are checks that failed.
@@ -44,6 +48,10 @@ def failure_kind(exc_type, message, attr_owner=None):
         return "assertion"
     if exc_type in MISSING_API_ERRORS:
         return "missing_api"
+    if exc_type == "FileNotFoundError" and file_at_head:
+        # The input differs between the runs, not the code: the file wasn't
+        # copied to base, or the PR adds it for the code to use.
+        return "missing_file"
     if exc_type == "AttributeError":
         # calc.new_func or obj.new_method is a missing API. But None.value or
         # "text".items means base returned the wrong kind of value, which is
@@ -63,6 +71,8 @@ class Outcome:
     exc_type: str = ""
     message: str = ""
     attr_owner: str = ""
+    missing_path: str = ""   # for FileNotFoundError: the path, relative to the worktree
+    file_at_head: bool = False  # set by the gate: missing_path exists in the head commit
 
     def describe(self):
         if self.status in ("passed", "skipped"):
@@ -92,7 +102,7 @@ def summarize(phases, collect_error=None, startup_error=None):
         if rec["outcome"] == "failed":
             status = "failed" if phase == "call" else "error"
             return Outcome(status, phase, rec.get("exc_type") or "", rec.get("message") or "",
-                           rec.get("attr_owner") or "")
+                           rec.get("attr_owner") or "", rec.get("missing_path") or "")
     return Outcome("passed", "call")
 
 
@@ -126,7 +136,10 @@ def verdict(base, head):
                 "misrouted": "The base run loaded project code from outside the base worktree"}[base.phase]
         return INCONCLUSIVE, f"{what}: {_short(base.message)}"
 
-    kind = failure_kind(base.exc_type, base.message, base.attr_owner or None)
+    kind = failure_kind(base.exc_type, base.message, base.attr_owner or None, base.file_at_head)
+    if kind == "missing_file":
+        return INCONCLUSIVE, (f"Fails at base because it reads {base.missing_path}, which exists at head but "
+                              f"not in the base run. If it is test data, add a --test-glob that matches it.")
     if kind == "assertion":
         return STRONG, f"Fails at base on a check: {_short(base.message) or base.exc_type}"
     if kind == "missing_api":

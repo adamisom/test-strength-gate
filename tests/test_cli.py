@@ -12,6 +12,13 @@ SRC_BASE = {"lib.py": "def double(x):\n    return x + x\n\ndef half(x):\n    ret
 SRC_HEAD = {"lib.py": "def double(x):\n    return 2 * x\n\ndef half(x):\n    return x / 2\n"}
 WEAK_TEST = {"tests/test_lib.py": "import lib\n\ndef test_double():\n    assert lib.double(3) == 6\n"}
 STRONG_TEST = {"tests/test_half.py": "import lib\n\ndef test_half():\n    assert lib.half(3) == 1.5\n"}
+# A PR that refactors double() and adds a data file its new test reads. The
+# source change can't be caught, so the test must never come out strong.
+DATA_TEST = {"tests/data/expected.json": '{"x": 3, "want": 6}\n',
+             "tests/test_data.py": "import json, pathlib, lib\n\ndef test_from_file():\n"
+             "    case = json.loads((pathlib.Path(__file__).parent / 'data' / 'expected.json').read_text())\n"
+             "    assert lib.double(case['x']) == case['want']\n"}
+REFACTOR = {"lib.py": "def double(x):\n    return 2 * x\n\ndef half(x):\n    return x // 2\n"}
 
 
 def cli(repo, base, head, *extra):
@@ -179,3 +186,35 @@ def test_non_python_fixtures_are_copied_but_not_collected(repo):
     assert sorted(result.test_files) == ["tests/data/test_case.robot", "tests/test_data.py"]
     assert [t.verdict for t in result.tests] == [STRONG]
     assert result.warnings == []
+
+
+def test_new_data_file_under_tests_travels_with_the_default_globs(repo):
+    # Codex review finding 1. The default patterns include tests/**, so the
+    # data file reaches base, and the test is judged on the refactor alone.
+    base = repo.commit(SRC_BASE)
+    head = repo.commit({**REFACTOR, **DATA_TEST})
+    result = repo.gate(base, head)
+    assert sorted(result.test_files) == ["tests/data/expected.json", "tests/test_data.py"]
+    assert [t.verdict for t in result.tests] == [WEAK]
+
+
+def test_file_missing_at_base_but_present_at_head_is_inconclusive(repo):
+    # Codex review finding 1. With patterns that leave the data file behind,
+    # base raises FileNotFoundError. That says nothing about the source change.
+    base = repo.commit(SRC_BASE)
+    head = repo.commit({**REFACTOR, **DATA_TEST})
+    [test] = repo.gate(base, head, globs=["tests/**/*.py"]).tests
+    assert test.verdict == INCONCLUSIVE
+    assert "tests/data/expected.json" in test.reason and "exists at head" in test.reason
+
+
+def test_file_missing_at_both_base_and_head_commits_stays_strong(repo):
+    # A FileNotFoundError for a file the head commit doesn't have either is
+    # behavior: here the old code forgets to create the output file.
+    base = repo.commit({"lib.py": "def save(path):\n    pass\n"})
+    head = repo.commit({"lib.py": "def save(path):\n    open(path, 'w').write('ok')\n",
+                        "tests/test_save.py": "import lib\n\ndef test_save(tmp_path):\n"
+                        "    lib.save(tmp_path / 'out.txt')\n"
+                        "    assert (tmp_path / 'out.txt').read_text() == 'ok'\n"})
+    [test] = repo.gate(base, head).tests
+    assert (test.verdict, test.base.exc_type) == (STRONG, "FileNotFoundError")

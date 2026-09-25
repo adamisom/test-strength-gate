@@ -20,7 +20,9 @@ from test_strength_gate.selection import (DEFAULT_GLOBS, function_fingerprint, m
     ("pkg/sub/conftest.py", True),
     ("pkg/tests/helpers.py", False),  # patterns with a slash are anchored at the root
     ("src/app.py", False),
-    ("tests/data.json", False),
+    ("tests/data.json", True),       # data files travel with the tests
+    ("tests/data/cases/x.robot", True),
+    ("pkg/tests/data.json", False),
     ("testing.py", False),
 ])
 def test_default_globs(path, expected):

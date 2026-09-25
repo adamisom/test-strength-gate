@@ -117,6 +117,8 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
         else:
             base_outcome = summarize(base_run["results"].get(test_id),
                                      base_run["collect_errors"].get(file), base_run.get("startup_error"))
+            if base_outcome.missing_path:
+                base_outcome.file_at_head = gitutil.show(repo, head_sha, base_outcome.missing_path) is not None
         head_outcome = summarize(head_run["results"].get(test_id),
                                  head_run["collect_errors"].get(file), head_run.get("startup_error"))
         label, reason = verdict(base_outcome, head_outcome)
