@@ -33,7 +33,8 @@ jobs:
       # installed copy of the project does not hide the base code.
       - run: pip install -r requirements.txt pytest
 
-      # Replace OWNER with the account that hosts test-strength-gate.
-      - uses: OWNER/test-strength-gate@v0
+      # Pin to a full commit sha of test-strength-gate, or to a release tag
+      # once one exists. There is no release tag yet.
+      - uses: adamisom/test-strength-gate@FULL_COMMIT_SHA
         with:
           fail-on: none   # report only; use "weak" to fail the check

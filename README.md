@@ -1,12 +1,20 @@
 # test-strength-gate
 
-Status: v0 spike. It works end to end on Python and pytest, and it has been tried on nine merged pull requests from open-source projects.
+This is version 0. It works end to end on Python and pytest from the command line, and it has been tried on nine merged pull requests from open-source projects. The GitHub Action has not yet run as a step in a real workflow.
 
-test-strength-gate checks whether a pull request's new tests would have caught the absence of its source change. It runs the tests the PR added or modified against the old code, with only the PR's test-side changes applied: its added and changed test-side files copied in, and the ones it deletes removed. For each test it reports whether the test fails there (good), passes there (a reviewer should look), or fails for a reason that says little, such as a missing import.
+test-strength-gate checks whether a pull request's new tests would have caught the absence of its source change. It runs the tests the PR added or modified against the old code, with only the PR's test-side changes applied, which means its added and changed test-side files are copied in and the ones it deletes are removed. For each test it reports whether the test fails there (good), passes there (a reviewer should look), or fails for a reason that says little, such as a missing import.
 
 ## Why
 
-Many pull requests written by coding agents are merged without a real review, and a green test run is often the only evidence that the change works. A green run shows that the tests pass with the change. It doesn't show that they would fail without it, so a test that asserts almost nothing looks the same as a test that pins down the fix. Running the new tests on the old code is a cheap way to tell the two apart.
+Many pull requests written by coding agents get no human review. A 2026 study of 33,596 pull requests written by coding agents found that 61.38% had no recorded review ([arXiv 2605.02273](https://arxiv.org/abs/2605.02273)). In that setting, a green test run is often the only evidence that the change works. A green run shows that the tests pass with the change. It doesn't show that they would fail without it, so a test that asserts almost nothing looks the same as a test that pins down the fix. Running the new tests on the old code is a cheap way to tell the two apart.
+
+## Evaluation
+
+In evaluation terms, the gate is an automatic grader for one property of agent output, which is whether the tests in a pull request carry evidence about its source change. It has three main outcomes rather than two, so it can report that it doesn't know instead of forcing a verdict. Its first measurement came with a hand check of every weak result, which checks the grader as well as the tests.
+
+On 30 new or changed tests from 8 merged pull requests written by coding agents, 7 tests passed without the source change. A hand check of those 7 found that 3 never reach the code the PR changed, and the other 4 are weak for an expected reason, such as a control test for behavior that existed before the PR. Of the rest, 20 tests were strong and 3 were inconclusive. The hand check also found all 5 strong verdicts that rest on an exception other than an assertion to be correct.
+
+The sample is small, and a weak test is a prompt for a reviewer rather than proof that a PR is wrong. The per-PR table, the repositories and PR numbers, and the hand check of each weak test are in [docs/evaluation.md](docs/evaluation.md).
 
 ## How it works
 
@@ -39,11 +47,13 @@ The action assumes your workflow has already checked out the repository and inst
 
 Supported runners are Linux and macOS, such as `ubuntu-latest` and `macos-latest`, which is where the tool's own tests run in CI. Windows is not supported. The action's steps use bash, which GitHub's Windows runners also have, but the tool has never run on Windows.
 
-The action itself has not yet run as a step in a real workflow. Its shell step is tested locally against a shallow clone of a merge commit (`tests/test_action.py`), and `examples/action-integration.yml` is a workflow, not yet run, that exercises the action with `uses: ./`.
+The action has not yet run as a step in a real workflow. Its shell step is tested locally against a shallow clone of a merge commit (`tests/test_action.py`), and `examples/action-integration.yml` is a workflow, not yet run, that exercises the action with `uses: ./`.
+
+To install it, add a workflow like this one. Use the `pull_request` trigger only, run it on a Linux or macOS runner, and check out with `fetch-depth: 2`. Pin the action to a full commit sha, or to a release tag once one exists. There is no release tag yet.
 
 ```yaml
 on:
-  pull_request:   # never pull_request_target; see examples/workflow.yml
+  pull_request:   # never pull_request_target, see examples/workflow.yml
 
 jobs:
   test-strength:
@@ -56,7 +66,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt pytest
-      - uses: OWNER/test-strength-gate@v0
+      - uses: adamisom/test-strength-gate@FULL_COMMIT_SHA   # or a release tag
         with:
           fail-on: none
 ```
@@ -108,21 +118,31 @@ python examples/demo.py
 - **New fixtures and data files.** Files that match the test patterns travel with the tests, and the default `tests/**` covers everything under `tests/`. Files that don't end in `.py` are copied but not passed to pytest. A data file or helper outside the patterns stays at its base version or is missing. When a test fails at base because it reads a file that exists at head but not in the base run, it is inconclusive. A changed or deleted data file outside the patterns is more dangerous, because the test sees the old version at base and can fail there for a reason unrelated to the source change, which looks strong. The report names such files when some verdict is strong. Add a pattern for such files. A changed fixture can also change a test's result for reasons unrelated to the source change, and v0 doesn't judge a test whose only change is in a fixture it uses.
 - **Installed packages.** The tool puts each worktree's root and `src/` first on `sys.path`, so an installed or editable copy of your project doesn't hide the base code. Git-ignored `.py` files in the checkout, such as a `version.py` that hatch-vcs or setuptools-scm writes at install time, are copied into both worktrees. If your code lives somewhere else, such as `lib/mypkg/`, the plugin notices when a project module was loaded from outside the worktree, for example from an installed copy in site-packages, and marks the base run inconclusive. It counts as project modules the `.py` files and packages at the root and in `src/`, and any other folder with an `__init__.py` whose parent has none, outside folders such as `tests/`, `docs/`, `examples/` and `vendor/`. A namespace package (one without `__init__.py`) outside the root and `src/` is not recognized, so an installed copy of it could still hide the base code. Compiled extensions are not rebuilt at base.
 - **Python and pytest only.** Other languages and test runners are not supported. Tests run from the repository root, and pytest-xdist is untested.
-- **Strong from an exception other than an assertion is a heuristic.** Any exception at base that isn't an import, attribute or argument error counts as strong, on the reasoning that the test passes at head, so base behaved differently. That is usually right, but not always. A known counterexample: the PR changes a data file outside the test patterns, the base run reads the old version, and the test fails with a `KeyError` that has nothing to do with the source change. Such a verdict is worded as conditional, and when the PR changes or deletes non-Python files outside the patterns, the report names them at the top.
+- **Strong from an exception other than an assertion is a heuristic.** Any exception at base that isn't an import, attribute or argument error counts as strong, on the reasoning that the test passes at head, so base behaved differently. That is usually right, but not always. In one known counterexample, the PR changes a data file outside the test patterns, and the base run reads the old version. The test then fails at base with a `KeyError` that has nothing to do with the source change. Such a verdict is worded as conditional, and when the PR changes or deletes non-Python files outside the patterns, the report names them at the top.
+- **A test of a new helper can't show that the helper is wired in.** When a PR adds a helper and changes other code to call it, a test that calls the helper directly is inconclusive at base, and the report can't say whether any test covers the new call. In verifiers #836, three tests call a new helper, and no test checks the display code that the PR changed to call it.
 - **What strong means.** A strong test depends on the change. That doesn't prove it checks the right behavior or checks it thoroughly.
 
 ## Prior art
 
+The idea is not new. Running a change's new tests against the code from before the change is how several existing tools and projects decide whether a test carries evidence.
+
 - SWE-bench grades a model's fix with its FAIL_TO_PASS tests, which are the tests that fail before the reference fix and pass after it. This tool applies the same check to the tests in a real pull request.
-- pyrite's "verify-red" CI job ([pyrite-wiki/pyrite#357](https://github.com/pyrite-wiki/pyrite/pull/357)) runs nearly the same check inside one repository. test-strength-gate packages the idea as a reusable Action with a per-test report.
+- pyrite's "verify-red" CI job ([pyrite-wiki/pyrite#357](https://github.com/pyrite-wiki/pyrite/pull/357)) runs nearly the same check for pytest inside one repository. Its review thread lists the traps it hit, and this tool handles each of them.
+- Yosemite-Crew's "Tests Must Be Able To Fail" check ([script](https://github.com/YosemiteCrew/Yosemite-Crew/blob/main/scripts/ci/tests-must-be-able-to-fail.mjs)) does the same for JavaScript and jest. Its [issue #3530](https://github.com/YosemiteCrew/Yosemite-Crew/issues/3530) describes a false result from trusting the pull request's base sha, which is why this Action takes its base from the merge commit.
+
+The contribution here is the packaging and the handling of edge cases. The packaging is a reusable Action with a per-test report. The edge cases are the ones that fool a simple version, e.g., a test that fails at base only because it imports a function the PR adds. I built a first version of this check at a previous job, and this repository is a new implementation.
 
 ## Development
 
 ```sh
-~/.local/bin/uv venv .venv
-~/.local/bin/uv pip install --python .venv/bin/python -e ".[test]"
+uv venv .venv
+uv pip install --python .venv/bin/python -e ".[test]"
 .venv/bin/python -m pytest -q
 .venv/bin/python examples/demo.py
 ```
 
 The tests build small git repositories in temporary directories and run the whole gate against them. `DECISIONS.md` records why the tool works the way it does.
+
+## License
+
+MIT. See `LICENSE`.
