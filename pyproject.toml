@@ -13,7 +13,7 @@ license-files = ["LICENSE"]
 dependencies = []
 
 [project.optional-dependencies]
-test = ["pytest>=7"]
+test = ["pytest>=7", "pytest-xdist"]
 
 [project.scripts]
 test-strength-gate = "test_strength_gate.cli:main"

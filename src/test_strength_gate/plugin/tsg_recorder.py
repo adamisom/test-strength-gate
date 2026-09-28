@@ -16,7 +16,8 @@ The JSON has four keys:
   results         {id: {phase: {outcome, exc_type, message, attr_owner, missing_path,
                                 raised_at, raised_inside, local_at, source_line,
                                 stderr_hint, xfail}}}
-  misrouted       {module: path} for project modules imported from outside the worktree
+  misrouted       {module: path} for project modules imported from outside the worktree,
+                  found in this process and, under pytest-xdist, in each worker
 """
 
 import json
@@ -194,6 +195,9 @@ def pytest_runtest_makereport(item, call):
         **where,
         **(_bare_assertion_hints(exc, local_frame, report) if exc else {}),
         "xfail": hasattr(report, "wasxfail"),
+        # Under pytest-xdist the worker, not the main process, imports the
+        # project, so only the worker can see where the modules came from.
+        **({"misrouted": _worker_misrouted()} if hasattr(item.config, "workerinput") else {}),
     }))
 
 
@@ -201,6 +205,8 @@ def pytest_runtest_logreport(report):
     info = dict(report.user_properties).get("tsg")
     if info is None:
         return
+    for module, path in (info.get("misrouted") or {}).items():
+        _data["misrouted"].setdefault(module, path)
     phases = _data["results"].setdefault(info["id"], {})
     phases[report.when] = {
         "outcome": report.outcome,
@@ -248,7 +254,10 @@ def _project_top_level_names():
     return names
 
 
-def _misrouted_imports():
+_project_names = None
+
+
+def _misrouted_imports(names=None):
     """Project modules that were imported from outside the worktree.
 
     If the project is installed (pip install . or pip install -e .), its
@@ -261,9 +270,13 @@ def _misrouted_imports():
     original = os.environ.get("TSG_ORIGINAL_REPO")
     original = Path(original).resolve() if original else None
     prefixes = {Path(sys.prefix).resolve(), Path(sys.base_prefix).resolve()}
-    local = _project_top_level_names()
+    global _project_names
+    if _project_names is None:
+        _project_names = _project_top_level_names()
+    local = _project_names
     found = {}
-    for name, module in list(sys.modules.items()):
+    for name in (sys.modules if names is None else names):
+        module = sys.modules.get(name)
         file = getattr(module, "__file__", None)
         if not file:
             continue
@@ -278,8 +291,28 @@ def _misrouted_imports():
     return found
 
 
+_scanned = set()
+_worker_found = {}
+
+
+def _worker_misrouted():
+    """_misrouted_imports for an xdist worker, checking only modules not seen before.
+
+    It runs after every test phase, so it looks only at the modules imported
+    since the last call and returns everything found so far in this worker.
+    """
+    new = [name for name in list(sys.modules) if name not in _scanned]
+    _scanned.update(new)
+    for module, path in _misrouted_imports(new).items():
+        _worker_found.setdefault(module, path)
+    return dict(_worker_found)
+
+
 def pytest_sessionfinish(session):
     if hasattr(session.config, "workerinput"):  # an xdist worker; the main process writes
         return
-    _data["misrouted"] = _misrouted_imports()
+    # Without xdist this process ran the tests. With xdist the workers' finds
+    # arrived with their reports and are already in _data["misrouted"].
+    for module, path in _misrouted_imports().items():
+        _data["misrouted"].setdefault(module, path)
     Path(os.environ["TSG_OUT"]).write_text(json.dumps(_data, indent=2))

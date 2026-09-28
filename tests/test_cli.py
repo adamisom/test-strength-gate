@@ -1,9 +1,12 @@
 """End-to-end edge cases through the CLI and the gate."""
 
 import functools
+import importlib.util
 import json
 import subprocess
 import sys
+
+import pytest
 
 from test_strength_gate.classify import BROKEN_AT_HEAD, INCONCLUSIVE, STRONG, WEAK
 from test_strength_gate import gate, runner
@@ -412,3 +415,35 @@ def test_test_side_file_replaced_by_a_folder_of_the_same_name(repo):
                         "    assert (pathlib.Path(__file__).parent / 'data' / 'x.txt').read_text() == 'new\\n'\n"})
     [test] = repo.gate(base, head).tests
     assert test.verdict == WEAK
+
+
+XDIST = {"pytest.ini": "[pytest]\naddopts = -n 2\n"}
+needs_xdist = pytest.mark.skipif(importlib.util.find_spec("xdist") is None, reason="needs pytest-xdist")
+
+
+@needs_xdist
+def test_xdist_in_addopts_gives_the_usual_verdicts(repo):
+    base = repo.commit({**SRC_BASE, **XDIST})
+    head = repo.commit({**SRC_HEAD, **WEAK_TEST, **STRONG_TEST})
+    result = repo.gate(base, head)
+    assert {t.id: t.verdict for t in result.tests} == {
+        "tests/test_lib.py::test_double": WEAK, "tests/test_half.py::test_half": STRONG}
+
+
+@needs_xdist
+def test_installed_copy_under_xdist_makes_base_inconclusive(repo, tmp_path, monkeypatch):
+    # Fable audit TSG-2. Under pytest-xdist the workers import the project,
+    # so the check for code loaded from outside the worktree has to run there
+    # too. Before, it ran only in the main process and the test came out weak.
+    base = repo.commit({"lib/mypkg/__init__.py": "def double(x):\n    return x + x + 1\n", **XDIST})
+    head = repo.commit({"lib/mypkg/__init__.py": "def double(x):\n    return x + x\n",
+                        "tests/test_pkg.py": "import mypkg\n\ndef test_d():\n    assert mypkg.double(2) == 4\n"})
+    site = tmp_path / "site-packages"
+    (site / "mypkg").mkdir(parents=True)
+    (site / "mypkg" / "__init__.py").write_text("def double(x):\n    return x + x\n")
+    monkeypatch.setenv("PYTHONPATH", str(site))
+    result = repo.gate(base, head)
+    [test] = result.tests
+    assert test.verdict == INCONCLUSIVE
+    assert "outside the base worktree" in test.reason and "mypkg" in test.reason
+    assert any("outside the head worktree" in w for w in result.warnings)
