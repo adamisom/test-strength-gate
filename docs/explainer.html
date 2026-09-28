@@ -162,7 +162,7 @@ footer { margin-top: 4rem; color: var(--muted); font-size: .85rem; }
 <main>
 
 <h1>test-strength-gate, explained</h1>
-<p class="meta">A private explainer for Adam Isom, written 9/25/26 against <code>main</code> at <code>75f4da1</code> (20 commits, 110 tests passing). Claude sub-agents built the code on 9/25/26, and three rounds of review by OpenAI's Codex hardened it. Where the design doc and the code disagreed, the code won, and the section near the end lists each disagreement and its correction.</p>
+<p class="meta">A guide to reading the code, written 9/25/26 against <code>main</code> at <code>75f4da1</code> (20 commits, 110 tests passing) and updated 9/28/26. Claude sub-agents built the code on 9/25/26, and three rounds of review by OpenAI's Codex hardened it. Where the design doc and the code disagreed, the code won, and the section near the end lists each disagreement and its correction.</p>
 
 <p class="lede">test-strength-gate is a GitHub Action for Python projects that use pytest. For each test a pull request adds or changes, it runs the test against the code from before the pull request and reports whether the test would have noticed if the pull request's source change were missing.</p>
 
@@ -178,10 +178,10 @@ footer { margin-top: 4rem; color: var(--muted); font-size: .85rem; }
   <li><a href="#eval">The evaluation</a></li>
   <li><a href="#codex">Three rounds of Codex review</a></li>
   <li><a href="#limits">What it does not do, and open issues</a></li>
-  <li><a href="#calls">Calls left to Adam</a></li>
+  <li><a href="#calls">Open design choices</a></li>
   <li><a href="#disagree">Where the docs and the code disagreed</a></li>
   <li><a href="#order">The order to read the code</a></li>
-  <li><a href="#quiz">Ten questions to answer without notes</a></li>
+  <li><a href="#quiz">Ten common questions</a></li>
 </ol>
 
 <!-- ============================================================ -->
@@ -680,18 +680,17 @@ HEAD_SHA="${HEAD_SHA:-$(git rev-parse HEAD)}"</code></pre>
 <ul>
   <li><strong>Strong from another exception is a heuristic.</strong> A data file the pull request changes outside the patterns stays at its old version at base, and a test can fail there with a <code>KeyError</code> unrelated to the source change and come out strong. The same can happen with a plain assertion. The report names such files, but a reader who skips the reason can overrate the verdict.</li>
   <li><strong>An argument TypeError inside the old code</strong> stays inconclusive, although it may have caught a behavioral bug.</li>
-  <li><strong>A test of a new helper can't show the helper is used</strong>, as in verifiers #836. The line for the README's limits is not written yet.</li>
+  <li><strong>A test of a new helper can't show the helper is used</strong>, as in verifiers #836. The README lists it as a limit.</li>
   <li><strong>The Action has never run in a GitHub workflow.</strong> Its shell step runs in a local test against a <code>--depth 2</code> clone of a merge commit, and <code>examples/action-integration.yml</code> has not run. The tool's own CI passed on GitHub for <code>75f4da1</code>, on Linux and macOS with Python 3.10 and 3.13.</li>
   <li><strong>No review of the last fix.</strong> Codex has not checked <code>75f4da1</code>.</li>
   <li><strong>Environment gaps.</strong> Compiled extensions aren't rebuilt at base. A pull request that adds a dependency means the base run uses head's installed packages. A namespace package outside the root and <code>src/</code> is not recognized as project code.</li>
   <li><strong>Inputs the note leaves out.</strong> Docs (<code>.md</code>, <code>.rst</code>, and files under <code>docs/</code> and <code>.github/</code>) are left out of the changed-inputs note, and a <code>.py</code> helper outside the patterns counts as source.</li>
   <li><strong>A conftest.py that fails to load at head</strong> gives inconclusive rows, although it is often a break in the pull request.</li>
   <li><strong>Fixed limits.</strong> Each pytest run has a 900-second limit set in code, and a gate makes up to four runs. pytest-xdist is untested. Flaky tests can land in any bucket.</li>
-  <li><strong>No license</strong> is set.</li>
 </ul>
 
 <!-- ============================================================ -->
-<h2 id="calls">Calls left to Adam</h2>
+<h2 id="calls">Open design choices</h2>
 
 <h3>The STRONG label for exceptions other than a check</h3>
 <p>The counts are for the 8 evaluation pull requests, computed from the recorded exception types. With robocop added, the strong counts are 24, 19 and 19, because robocop's four strong verdicts are all assertions.</p>
@@ -708,16 +707,15 @@ HEAD_SHA="${HEAD_SHA:-$(git rev-parse HEAD)}"</code></pre>
 <p>The design doc recommends keeping the current label and revisiting after about 20 more pull requests. If the label itself should carry the doubt, the sixth verdict keeps the evidence and moves no correct verdict to inconclusive.</p>
 
 <h3>The first real GitHub workflow run</h3>
-<p>Nothing in the repository should claim the Action works in GitHub until it has run there. The plan is a small demo repository with one pull request that has a strong, a weak and an inconclusive test, and then a check of the job summary and the annotations. Moving <code>examples/action-integration.yml</code> into <code>.github/workflows/</code> is a smaller step toward the same goal, but it can't cover a pull request from a fork.</p>
+<p>Nothing in the repository should claim the Action works in GitHub until it has run there. A small demo repository is built for it, with one pull request whose tests give a strong, a weak and an inconclusive verdict when the gate runs from the command line. It has not yet run on GitHub, and the check after it runs is the job summary and the annotations. Moving <code>examples/action-integration.yml</code> into <code>.github/workflows/</code> is a smaller step toward the same goal, but it can't cover a pull request from a fork.</p>
 
 <h3>Smaller calls</h3>
 <ul>
-  <li>How much to rewrite by hand before calling the code his own, and when the repository turns public.</li>
   <li>Whether to compare the called function's signature at base and head, so that an argument TypeError from the old code can become strong.</li>
   <li>Whether to repair a misrouted install by putting a folder such as <code>lib/</code> on <code>PYTHONPATH</code>, instead of marking the base run inconclusive.</li>
   <li>Whether a <code>conftest.py</code> import error at head should be broken rather than inconclusive.</li>
   <li>Whether the changed-inputs note should also name <code>.py</code> helpers in folders such as <code>testing/</code>.</li>
-  <li>Keeping <code>tests/**</code> as a default pattern (recommended), a license (MIT is the usual choice), and the name.</li>
+  <li>Keeping <code>tests/**</code> as a default pattern (recommended), and the name.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -734,9 +732,9 @@ HEAD_SHA="${HEAD_SHA:-$(git rev-parse HEAD)}"</code></pre>
 
 <!-- ============================================================ -->
 <h2 id="order">The order to read the code</h2>
-<p>The first Codex review listed which files to rewrite by hand first, and the design doc agrees. Before reading, run <code>.venv/bin/python examples/demo.py</code> from the repository, which builds a toy repository and shows one strong, one weak and one inconclusive test.</p>
+<p>Read the modules in this order, starting with the two that hold the judgment calls. Before reading, run <code>.venv/bin/python examples/demo.py</code> from the repository, which builds a toy repository and shows one strong, one weak and one inconclusive test.</p>
 <ol>
-  <li><code>classify.py</code>. The rules here are the judgment calls an interviewer will probe. Be able to say which exception gives which verdict, and why the head checks come first.</li>
+  <li><code>classify.py</code>. The rules here are the tool's main judgment calls. Be able to say which exception gives which verdict, and why the head checks come first.</li>
   <li><code>plugin/tsg_recorder.py</code>. The pytest hooks, the exception fields, the output capture for bare assertions, and the misroute check. The design doc calls it the most subtle runtime code.</li>
   <li><code>runner.py</code>. The subprocess environment, the handoff of selected IDs, the timeout, and when a run counts as failed as a whole.</li>
   <li><code>selection.py</code>. What counts as a changed test, and which class context is left out.</li>
@@ -746,7 +744,7 @@ HEAD_SHA="${HEAD_SHA:-$(git rev-parse HEAD)}"</code></pre>
 <p>For each module, read the tests that pin it. <code>tests/test_units.py</code> covers the rules, <code>tests/test_scenarios.py</code> runs one scenario repository that produces every verdict, <code>tests/test_cli.py</code> has one end-to-end test per bug fix, and <code>tests/test_action.py</code> runs the Action's shell step.</p>
 
 <!-- ============================================================ -->
-<h2 id="quiz">Ten questions to answer without notes</h2>
+<h2 id="quiz">Ten common questions</h2>
 <p>Click a question to see the answer.</p>
 
 <details>
