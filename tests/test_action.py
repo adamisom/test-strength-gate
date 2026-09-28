@@ -7,6 +7,7 @@ summary, the annotations and the exit code.
 """
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -62,3 +63,32 @@ def test_action_run_step_on_a_shallow_merge_commit(repo, tmp_path):
     assert {t["id"]: t["verdict"] for t in report["tests"]} == {
         "tests/test_lib.py::test_double": "WEAK", "tests/test_lib.py::test_half": "STRONG"}
     assert "2 new tests: 1 strong, 1 weak" in summary.read_text()
+
+
+def run_install_step(tmp_path, python, path):
+    env = {"PATH": path, "HOME": str(tmp_path), "PYTHON_BIN": str(python), "ACTION_PATH": str(ACTION.parent),
+           "UV_CACHE_DIR": os.environ.get("UV_CACHE_DIR", str(Path.home() / ".cache" / "uv"))}
+    return subprocess.run(["bash", "-c", step_script("Install test-strength-gate")], env=env,
+                          capture_output=True, text=True)
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+def test_install_step_without_pip_or_uv_fails_with_a_clear_error(tmp_path):
+    # Fable audit TSG-8. A Python made without pip (as uv venv makes it) used
+    # to fail with "No module named pip". With no uv either, say what to do.
+    subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(tmp_path / "venv")], check=True)
+    proc = run_install_step(tmp_path, tmp_path / "venv" / "bin" / "python", "/usr/bin:/bin")
+    assert proc.returncode == 1
+    assert "::error::" in proc.stdout and "install pip or uv" in proc.stdout
+
+
+@pytest.mark.skipif(shutil.which("bash") is None or shutil.which("uv") is None, reason="needs bash and uv")
+def test_install_step_uses_uv_when_the_python_has_no_pip(tmp_path):
+    # Fable audit TSG-8. A uv-made virtualenv has no pip, so install with uv.
+    uv = shutil.which("uv")
+    subprocess.run([uv, "venv", "-q", "--python", sys.executable, str(tmp_path / "venv")], check=True)
+    python = tmp_path / "venv" / "bin" / "python"
+    proc = run_install_step(tmp_path, python, f"{Path(uv).parent}:/usr/bin:/bin")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    check = subprocess.run([str(python), "-c", "import test_strength_gate.cli"], capture_output=True, text=True)
+    assert check.returncode == 0, check.stderr

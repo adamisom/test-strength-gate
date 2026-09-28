@@ -396,3 +396,13 @@ Source: Fable audit, 9/28/26 (TSG-6).
 - **Choice.** `show` decodes with `errors="replace"`, so a byte that isn't UTF-8 becomes a replacement character. `cli.main` catches `UnicodeDecodeError` like `GitError` and exits with code 2 and a one-line message, which covers the remaining case of a file path in `git diff` output that isn't UTF-8.
 - **Alternatives.** Decode each file with `tokenize.detect_encoding`, which honors the coding line. That is more exact, but the gate only needs a string it can parse to fingerprint test functions, and the base and head versions are decoded the same way, so comparing their fingerprints still works.
 - **Why.** A rare encoding should cost at most a message, never a crash. The evaluation had no such file, so no verdict changed. Tests cover it (`test_a_test_file_that_is_not_utf8_is_judged`, `test_a_decoding_error_exits_2_with_a_message`).
+
+## 40. The action installs itself with uv when the chosen Python has no pip
+
+Source: Fable audit, 9/28/26 (TSG-8).
+
+- **Before.** The action's install step ran `"$PYTHON_BIN" -m pip install "$ACTION_PATH"`.
+- **Evidence.** A virtualenv made with `uv venv` or `uv sync` has no pip. A project that sets up its environment that way and passes `python: .venv/bin/python` got "No module named pip", and the step failed before the gate ran. The audit confirmed that such an interpreter has no pip.
+- **Choice.** The step uses `"$PYTHON_BIN" -m pip` when pip is available, else `uv pip install --python "$PYTHON_BIN"` when `uv` is on PATH, else it fails with an `::error::` that says to install pip or uv in an earlier step. The inputs still reach the script only through env variables.
+- **Alternatives.** Skip the install and run the tool from `$ACTION_PATH/src` with `PYTHONPATH`. That needs no pip or uv, but `runner.py` copies `PYTHONPATH` into the pytest runs, so the project's tests would also see a `test_strength_gate` package unless the runner strips it.
+- **Why.** A project that uses uv has uv on PATH, so the fallback covers the case the audit found without changing how the tool runs. `tests/test_action.py` now runs the install step too, with a Python that has no pip, once with uv on PATH and once without it. The pip branch is the old command and has no local test, because a pip install of the action builds it with hatchling, which needs the network.

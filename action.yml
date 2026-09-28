@@ -58,7 +58,17 @@ runs:
       env:
         PYTHON_BIN: ${{ inputs.python }}
         ACTION_PATH: ${{ github.action_path }}
-      run: '"$PYTHON_BIN" -m pip install --quiet "$ACTION_PATH"'
+      run: |
+        set -euo pipefail
+        # A virtualenv made by uv has no pip, so fall back to uv when it is on PATH.
+        if "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
+          "$PYTHON_BIN" -m pip install --quiet "$ACTION_PATH"
+        elif command -v uv >/dev/null 2>&1; then
+          uv pip install --quiet --python "$PYTHON_BIN" "$ACTION_PATH"
+        else
+          echo "::error::The python input has no pip and uv is not on PATH, so test-strength-gate can't install itself. To fix it, install pip or uv in an earlier step, e.g. uv with astral-sh/setup-uv."
+          exit 1
+        fi
 
     # Inputs reach the script only through env variables, never by pasting
     # ${{ }} into the script text, so a crafted value can't inject shell code.

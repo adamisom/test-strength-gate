@@ -43,7 +43,7 @@ When a PR changes nothing outside its tests and docs, or when every judged test 
 
 ## Use it as a GitHub Action
 
-The action assumes your workflow has already checked out the repository and installed your project's dependencies and pytest. It installs its own package into the same Python and runs.
+The action assumes your workflow has already checked out the repository and installed your project's dependencies and pytest. It installs its own package into the same Python and runs. It installs with pip, or with `uv pip` when that Python has no pip and `uv` is on PATH, as in a virtualenv made by `uv venv`.
 
 Supported runners are Linux and macOS, such as `ubuntu-latest` and `macos-latest`, which is where the tool's own tests run in CI. Windows is not supported. The action's steps use bash, which GitHub's Windows runners also have, but the tool has never run on Windows.
 
