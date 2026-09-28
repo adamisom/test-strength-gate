@@ -59,7 +59,7 @@ def test_no_test_changes(repo, capsys):
     assert "No added or modified tests to judge." in capsys.readouterr().out
 
 
-def test_deleted_test_files_are_ignored(repo):
+def test_a_deleted_test_file_has_no_tests_to_judge(repo):
     base = repo.commit({**SRC_BASE, **WEAK_TEST})
     head = repo.commit({"tests/test_lib.py": None})
     result = repo.gate(base, head)

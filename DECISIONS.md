@@ -437,3 +437,11 @@ Source: Fable audit, 9/28/26 (TSG-12).
 - **Choice.** The run step fails with an `::error::` when exactly one of the two inputs is set. Both input descriptions and the README say to set both or neither. With neither, the default is unchanged.
 - **Alternatives.** Fill in the missing one from the merge commit, as before, and document it. Neither half of that mix is what a caller who sets one input by hand is likely to want.
 - **Why.** A clear error on the first run is better than a gate that silently judges the wrong commits. The evaluation ran the CLI, so no verdict changed. A test covers both cases (`test_run_step_requires_both_shas_or_neither`).
+
+## 44. The hand check of the OpenEnv strong verdicts is written down, and a test name is fixed
+
+Source: Fable audit, 9/28/26 (TSG-13).
+
+- **Context.** The README says a hand check found all 5 strong verdicts from exceptions other than assertions correct. `docs/evaluation.md` gave the reasoning for EvidenceForge, instructor and OpenEnv's `AttributeError`, but the two OpenEnv `JSONDecodeError`s were explained only in a private triage note. The test `test_deleted_test_files_are_ignored` kept its name from before decision 34, although deleted test files are no longer ignored.
+- **Choice.** `docs/evaluation.md` has one sentence for each `JSONDecodeError` verdict that says why it is correct. The old code appends the new record on the same line as a final record that has no trailing newline, so the test's own `json.loads` raises "Extra data" where the first record ends. The positions in the saved messages, characters 21 and 10,036, match the lengths of the first records in the PR's test code. The test is now `test_a_deleted_test_file_has_no_tests_to_judge`, which is what it checks.
+- **Why.** A claim in the README should rest on reasoning that a reader can find. No code or verdict changed.
