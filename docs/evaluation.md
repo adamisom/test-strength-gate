@@ -1,6 +1,6 @@
 # Evaluation on merged pull requests
 
-This page gives the per-PR numbers behind the evaluation summary in the README. The gate ran from the command line on 2026-09-25. It has not yet run as a step in a GitHub workflow.
+This page gives the per-PR numbers behind the evaluation summary in the README. The gate ran from the command line on 2026-09-25. These runs were from the command line, not as a step in a GitHub workflow. The action's first workflow run was on a demo pull request on 9/28/26 (see the README).
 
 ## How the pull requests were chosen and run
 

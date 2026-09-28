@@ -1,6 +1,6 @@
 # test-strength-gate
 
-This is version 0. It works end to end on Python and pytest from the command line, and it has been tried on nine merged pull requests from open-source projects. The GitHub Action has not yet run as a step in a real workflow.
+This is version 0. It works end to end on Python and pytest from the command line, and it has been tried on nine merged pull requests from open-source projects. The GitHub Action has run in one real workflow, on a demo pull request.
 
 test-strength-gate checks whether a pull request's new tests would have caught the absence of its source change. It runs the tests the PR added or modified against the old code, with only the PR's test-side changes applied, which means its added and changed test-side files are copied in and the ones it deletes are removed. For each test it reports whether the test fails there (good), passes there (a reviewer should look), or fails for a reason that says little, such as a missing import.
 
@@ -47,7 +47,7 @@ The action assumes your workflow has already checked out the repository and inst
 
 Supported runners are Linux and macOS, such as `ubuntu-latest` and `macos-latest`, which is where the tool's own tests run in CI. Windows is not supported. The action's steps use bash, which GitHub's Windows runners also have, but the tool has never run on Windows.
 
-The action has not yet run as a step in a real workflow. Its shell step is tested locally against a shallow clone of a merge commit (`tests/test_action.py`), and `examples/action-integration.yml` is a workflow, not yet run, that exercises the action with `uses: ./`.
+On 9/28/26 the action ran as a step in a real GitHub workflow for the first time, in a small demo repository (adamisom/tsg-demo, private for now) on a pull request with one test of each kind. It gave the expected verdicts, 1 strong, 1 weak and 1 inconclusive, wrote the report to the job summary, and put one "Weak test" warning on the weak test's file. It has not yet run on a pull request from a fork. Its shell step is tested locally against a shallow clone of a merge commit (`tests/test_action.py`), and `examples/action-integration.yml` is a workflow, not yet run, that exercises the action with `uses: ./`.
 
 To install it, add a workflow like this one. Use the `pull_request` trigger only, run it on a Linux or macOS runner, and check out with `fetch-depth: 2`. Pin the action to a full commit sha, or to a release tag once one exists. There is no release tag yet.
 
