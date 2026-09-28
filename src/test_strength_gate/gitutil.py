@@ -37,9 +37,14 @@ def changed_files(repo, base, head):
 
 
 def show(repo, rev, path):
-    """File contents at a revision, or None if the file does not exist there."""
+    """File contents at a revision, or None if the file does not exist there.
+
+    Bytes that aren't UTF-8, e.g. in a latin-1 test file, become U+FFFD. The
+    gate only parses the text to fingerprint test functions, and both the base
+    and the head version are decoded the same way, so the comparison holds.
+    """
     proc = subprocess.run(["git", "-C", str(repo), "show", f"{rev}:{path}"],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     return proc.stdout if proc.returncode == 0 else None
 
 

@@ -386,3 +386,13 @@ Source: Fable audit, 9/28/26 (TSG-4).
 - **Choice.** A PR is tests only when it changes no Python source and `other_files` is empty, i.e. no non-Python file outside the patterns other than docs changed or was deleted. The note now says "changes no source outside its test files and docs". The README's limits also say that a PR whose source change is in a compiled extension gives weak verdicts that mean nothing, because extensions are not rebuilt at base.
 - **Alternatives.** Keep the rule and only hide the note when a verdict is strong. That fixes the contradiction in the report, but `--fail-on weak` would still ignore weak tests in such a PR.
 - **Why.** Any changed input outside the tests can be the change a test should catch, which is why decision 33 already names these files in the report. A PR that also changes a config file the tests don't read loses the tests-only note, which is the safer mistake. Every evaluation PR changed Python source, and none had other files, so no label or verdict changed. Tests cover it (`test_a_pr_whose_source_change_is_a_non_python_file_is_not_tests_only`, `test_a_pr_that_changes_only_tests_and_docs_is_still_tests_only`).
+
+## 39. A test file that isn't UTF-8 no longer crashes the gate
+
+Source: Fable audit, 9/28/26 (TSG-6).
+
+- **Before.** `gitutil.show` decoded `git show` output as strict UTF-8, and the CLI caught only `GitError`.
+- **Evidence.** A Python test file with a `# -*- coding: latin-1 -*-` line and a non-ASCII byte is legal Python. In the audit's scratch case, `git show` of it raised `UnicodeDecodeError` inside `run_gate`, and the step failed with a traceback and exit code 1 instead of a report.
+- **Choice.** `show` decodes with `errors="replace"`, so a byte that isn't UTF-8 becomes a replacement character. `cli.main` catches `UnicodeDecodeError` like `GitError` and exits with code 2 and a one-line message, which covers the remaining case of a file path in `git diff` output that isn't UTF-8.
+- **Alternatives.** Decode each file with `tokenize.detect_encoding`, which honors the coding line. That is more exact, but the gate only needs a string it can parse to fingerprint test functions, and the base and head versions are decoded the same way, so comparing their fingerprints still works.
+- **Why.** A rare encoding should cost at most a message, never a crash. The evaluation had no such file, so no verdict changed. Tests cover it (`test_a_test_file_that_is_not_utf8_is_judged`, `test_a_decoding_error_exits_2_with_a_message`).

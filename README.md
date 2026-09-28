@@ -103,7 +103,7 @@ test-strength-gate --repo PATH --base SHA --head SHA
 
 It also runs as `python -m test_strength_gate`. The default test patterns are `test_*.py`, `*_test.py`, `tests/**` and `**/conftest.py`, so data files under `tests/` travel with the tests. A pattern without a slash matches a file name in any directory, and a pattern with a slash matches from the repository root.
 
-The exit code is 0, or 1 when you pass `--fail-on weak` and a test is weak, or 2 when git can't resolve the commits. When `GITHUB_STEP_SUMMARY` is set, the markdown report is appended to it.
+The exit code is 0, or 1 when you pass `--fail-on weak` and a test is weak, or 2 when git can't resolve the commits or a file path in git's output isn't UTF-8. When `GITHUB_STEP_SUMMARY` is set, the markdown report is appended to it.
 
 To see a report in one command, run the demo. It builds a toy repository whose PR has one strong, one weak and one inconclusive test.
 

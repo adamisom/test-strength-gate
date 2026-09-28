@@ -41,6 +41,9 @@ def main(argv=None):
     except GitError as e:
         print(f"test-strength-gate: {e}", file=sys.stderr)
         return 2
+    except UnicodeDecodeError as e:  # e.g. a file path in git's output that isn't UTF-8
+        print(f"test-strength-gate: git output could not be read as UTF-8: {e}", file=sys.stderr)
+        return 2
 
     markdown = to_markdown(result)
     print(markdown)

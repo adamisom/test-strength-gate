@@ -505,3 +505,28 @@ def test_a_pr_that_changes_only_tests_and_docs_is_still_tests_only(repo):
     base = repo.commit({**SRC_BASE, "docs/notes.md": "old\n"})
     head = repo.commit({**WEAK_TEST, "docs/notes.md": "new\n"})
     assert repo.gate(base, head).pr_kind == "tests_only"
+
+
+def test_a_test_file_that_is_not_utf8_is_judged(repo):
+    # Fable audit TSG-6. A latin-1 test file with a coding cookie is legal
+    # Python, but git show's output was decoded as strict UTF-8 and the gate
+    # crashed with a traceback.
+    base = repo.commit(SRC_BASE)
+    (repo.path / "tests").mkdir()
+    (repo.path / "tests" / "test_half.py").write_bytes(
+        "# -*- coding: latin-1 -*-\nimport lib\n\ndef test_half():\n    s = 'caf\xe9'\n"
+        "    assert lib.half(3) == 1.5\n".encode("latin-1"))
+    head = repo.commit(SRC_HEAD)
+    [test] = repo.gate(base, head).tests
+    assert (test.id, test.verdict) == ("tests/test_half.py::test_half", STRONG)
+
+
+def test_a_decoding_error_exits_2_with_a_message(repo, monkeypatch, capsys):
+    # Fable audit TSG-6. A path that isn't UTF-8 in git's output still can't
+    # be decoded, so the CLI reports it like a git error instead of crashing.
+    def fail(*args, **kwargs):
+        raise UnicodeDecodeError("utf-8", b"\xe9", 0, 1, "invalid continuation byte")
+    monkeypatch.setattr("test_strength_gate.cli.run_gate", fail)
+    head = repo.commit(SRC_BASE)
+    assert cli(repo, head, head) == 2
+    assert "can't decode byte 0xe9" in capsys.readouterr().err
