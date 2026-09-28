@@ -463,3 +463,12 @@ Source: Fable audit, 9/28/26 (TSG-7). Not changed.
 - **Choice.** The rule is unchanged. The README's limits list the four forms.
 - **Alternatives.** The audit suggested message rules in `failure_kind` for wordings that name a rejected option or field, e.g. "unrecognized arguments" and "Extra inputs are not permitted", treating a `SystemExit` from a library with a usage message like an argument TypeError, and the conditional wording for an assertion that contains `hasattr(` or `in dir(`.
 - **Why.** Each suggestion changes the verdict rule for exceptions other than assertions, which is an open call for Adam (design doc, call 5: keep the label, add a separate verdict, or make these inconclusive). Adding exception-specific rules before that call would narrow the rule piece by piece without a decision on the whole. The evaluation had none of the four forms, so it can't measure them. The TSG-1 fix (decision 35) was different, because it only widened a rule that already calls argument errors inconclusive.
+
+## 47. A test whose only change is module-level code in its file is not judged (a documented limit)
+
+Source: Fable audit, 9/28/26 (TSG-9). Not changed.
+
+- **Context.** The fingerprint from decisions 6 and 29 covers the test function and the context of its enclosing classes. A change to a module-level constant, a module-level helper the test calls, or a module-level `pytestmark` leaves the function's fingerprint unchanged, so the test is not judged. In the audit's scratch case, the PR changes `EXPECTED = 1` to `EXPECTED = 1.5` in the test file and changes the source to match, and the report says "No added or modified tests to judge". The README's limits mentioned only fixtures.
+- **Choice.** The fingerprint is unchanged. The README's limit on fixtures now also names module-level code in the test file, such as a constant, a helper function or `pytestmark`. The report's legend explains the verdicts and doesn't list what isn't judged, so it is unchanged.
+- **Alternatives.** Add the file's module-level statements, other than imports, functions and classes, to every fingerprint in that file, the way decision 29 adds a class's context.
+- **Why.** A module-level edit would then make every test in the file count as modified, and most of them would come out weak, much like the parametrize surprise in decision 6 and the whole-class option that decision 29 rejected. Following which tests use a changed constant or helper needs the same name tracking as the fixture gap in decision 20, and the two should be solved together.
