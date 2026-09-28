@@ -681,7 +681,7 @@ HEAD_SHA="${HEAD_SHA:-$(git rev-parse HEAD)}"</code></pre>
   <li><strong>Strong from another exception is a heuristic.</strong> A data file the pull request changes outside the patterns stays at its old version at base, and a test can fail there with a <code>KeyError</code> unrelated to the source change and come out strong. The same can happen with a plain assertion. The report names such files, but a reader who skips the reason can overrate the verdict.</li>
   <li><strong>An argument TypeError inside the old code</strong> stays inconclusive, although it may have caught a behavioral bug.</li>
   <li><strong>A test of a new helper can't show the helper is used</strong>, as in verifiers #836. The README lists it as a limit.</li>
-  <li><strong>The Action has never run in a GitHub workflow.</strong> Its shell step runs in a local test against a <code>--depth 2</code> clone of a merge commit, and <code>examples/action-integration.yml</code> has not run. The tool's own CI passed on GitHub for <code>75f4da1</code>, on Linux and macOS with Python 3.10 and 3.13.</li>
+  <li><strong>The Action has run in one GitHub workflow only.</strong> On 9/28/26 it ran on a demo pull request in a private demo repository and gave the expected strong, weak and inconclusive verdicts, the job summary and one weak-test warning. It has not run on a pull request from a fork. Its shell step is also tested locally against a <code>--depth 2</code> clone of a merge commit.</li>
   <li><strong>No review of the last fix.</strong> Codex has not checked <code>75f4da1</code>.</li>
   <li><strong>Environment gaps.</strong> Compiled extensions aren't rebuilt at base. A pull request that adds a dependency means the base run uses head's installed packages. A namespace package outside the root and <code>src/</code> is not recognized as project code.</li>
   <li><strong>Inputs the note leaves out.</strong> Docs (<code>.md</code>, <code>.rst</code>, and files under <code>docs/</code> and <code>.github/</code>) are left out of the changed-inputs note, and a <code>.py</code> helper outside the patterns counts as source.</li>
@@ -707,7 +707,7 @@ HEAD_SHA="${HEAD_SHA:-$(git rev-parse HEAD)}"</code></pre>
 <p>The design doc recommends keeping the current label and revisiting after about 20 more pull requests. If the label itself should carry the doubt, the sixth verdict keeps the evidence and moves no correct verdict to inconclusive.</p>
 
 <h3>The first real GitHub workflow run</h3>
-<p>Nothing in the repository should claim the Action works in GitHub until it has run there. A small demo repository is built for it, with one pull request whose tests give a strong, a weak and an inconclusive verdict when the gate runs from the command line. It has not yet run on GitHub, and the check after it runs is the job summary and the annotations. Moving <code>examples/action-integration.yml</code> into <code>.github/workflows/</code> is a smaller step toward the same goal, but it can't cover a pull request from a fork.</p>
+<p>Done on 9/28/26. A small demo repository has one pull request whose tests give a strong, a weak and an inconclusive verdict, and the workflow run gave exactly those, with the report in the job summary and one warning annotation on the weak test. The next step is a run on a pull request from a fork, which the Action is designed to handle because it needs no token.</p>
 
 <h3>Smaller calls</h3>
 <ul>
