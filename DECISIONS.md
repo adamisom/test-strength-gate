@@ -445,3 +445,12 @@ Source: Fable audit, 9/28/26 (TSG-13).
 - **Context.** The README says a hand check found all 5 strong verdicts from exceptions other than assertions correct. `docs/evaluation.md` gave the reasoning for EvidenceForge, instructor and OpenEnv's `AttributeError`, but the two OpenEnv `JSONDecodeError`s were explained only in a private triage note. The test `test_deleted_test_files_are_ignored` kept its name from before decision 34, although deleted test files are no longer ignored.
 - **Choice.** `docs/evaluation.md` has one sentence for each `JSONDecodeError` verdict that says why it is correct. The old code appends the new record on the same line as a final record that has no trailing newline, so the test's own `json.loads` raises "Extra data" where the first record ends. The positions in the saved messages, characters 21 and 10,036, match the lengths of the first records in the PR's test code. The test is now `test_a_deleted_test_file_has_no_tests_to_judge`, which is what it checks.
 - **Why.** A claim in the README should rest on reasoning that a reader can find. No code or verdict changed.
+
+## 45. A source module named like a test file stays test side (a documented limit)
+
+Source: Fable audit, 9/28/26 (TSG-5). Not changed.
+
+- **Context.** The default patterns `test_*.py` and `*_test.py` have no slash, so they match a file name in any folder, including inside the package. The audit's scratch case has `pkg/core.py` import `make` from `pkg/test_utils.py`. The PR changes `make` and adds a test of the new result. Since `pkg/test_utils.py` matches a pattern, its head version is copied into the base run, the test passes there and comes out WEAK with no warning, and the PR is labeled tests only.
+- **Choice.** The patterns are unchanged. The README's limits say that such a module is treated as test side, and that projects with such modules should pass a narrower `--test-glob`.
+- **Alternatives.** The audit suggested skipping a slash-free match when a parent folder of the path has an `__init__.py` and the path is not under a folder named `tests` or `test`.
+- **Why.** Some projects keep real test files inside their package outside a `tests` folder, e.g. `pkg/test_core.py` next to `pkg/core.py`, or `pkg/unittests/test_core.py`. The suggested rule would stop treating those as tests, so the gate would miss real in-package test files and judge nothing in them, without saying so. A source module named `test_*.py` is uncommon, and a project that has one can set the patterns itself.
