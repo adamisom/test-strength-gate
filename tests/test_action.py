@@ -32,7 +32,8 @@ def step_script(name):
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
-def test_action_run_step_on_a_shallow_merge_commit(repo, tmp_path):
+@pytest.mark.parametrize("path_input, annotated", [(".", "tests/test_lib.py"), ("checkout", "checkout/tests/test_lib.py")])
+def test_action_run_step_on_a_shallow_merge_commit(repo, tmp_path, path_input, annotated):
     repo.commit({"lib.py": "def double(x):\n    return x + x\n\ndef half(x):\n    return x // 2\n"})
     repo.git("checkout", "-q", "-b", "feature")
     pr_head = repo.commit({"lib.py": "def double(x):\n    return 2 * x\n\ndef half(x):\n    return x / 2\n",
@@ -51,12 +52,15 @@ def test_action_run_step_on_a_shallow_merge_commit(repo, tmp_path):
            "GITHUB_OUTPUT": str(out), "GITHUB_STEP_SUMMARY": str(summary),
            # The action's inputs, as the step's env block passes them.
            "BASE_SHA": "", "HEAD_SHA": "", "PR_HEAD_SHA": pr_head, "TEST_GLOBS": "tests/*.py **/conftest.py",
-           "PYTEST_ARGS": "-o addopts=", "FAIL_ON": "weak", "PYTHON_BIN": sys.executable}
+           "PYTEST_ARGS": "-o addopts=", "FAIL_ON": "weak", "PYTHON_BIN": sys.executable,
+           # The step runs in the path input's folder, and the annotations need
+           # paths from the workspace root (Fable audit TSG-11).
+           "REPO_PATH": path_input}
     proc = subprocess.run(["bash", "-c", step_script("Run test-strength-gate")], cwd=clone, env=env,
                           capture_output=True, text=True)
 
     assert proc.returncode == 1, proc.stderr  # fail-on: weak, and test_double is weak
-    assert "::warning file=tests/test_lib.py,title=Weak test::tests/test_lib.py::test_double" in proc.stdout
+    assert f"::warning file={annotated},title=Weak test::tests/test_lib.py::test_double" in proc.stdout
     assert "::warning::The merge commit" not in proc.stdout  # HEAD^2 is the PR head
     assert out.read_text() == f"json-report={temp}/test-strength-gate.json\n"
     report = json.loads((temp / "test-strength-gate.json").read_text())

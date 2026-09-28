@@ -84,6 +84,7 @@ runs:
         PYTEST_ARGS: ${{ inputs.pytest-args }}
         FAIL_ON: ${{ inputs.fail-on }}
         PYTHON_BIN: ${{ inputs.python }}
+        REPO_PATH: ${{ inputs.path }}
       run: |
         set -euo pipefail
         set -f  # keep the glob patterns from expanding in the loop below
@@ -103,7 +104,7 @@ runs:
         report="$RUNNER_TEMP/test-strength-gate"
         echo "json-report=$report.json" >> "$GITHUB_OUTPUT"
         args=(--repo . --base "$BASE_SHA" --head "$HEAD_SHA" --fail-on "$FAIL_ON"
-              --json "$report.json" --markdown "$report.md")
+              --json "$report.json" --markdown "$report.md" --annotation-path-prefix "$REPO_PATH")
         for glob in $TEST_GLOBS; do args+=(--test-glob "$glob"); done
         if [ -n "$PYTEST_ARGS" ]; then args+=(--pytest-args "$PYTEST_ARGS"); fi
         "$PYTHON_BIN" -m test_strength_gate "${args[@]}"

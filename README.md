@@ -99,9 +99,12 @@ test-strength-gate --repo PATH --base SHA --head SHA
                    [--test-glob PATTERN ...] [--pytest-args "..."]
                    [--json out.json] [--markdown out.md]
                    [--fail-on weak|none] [--python PATH]
+                   [--annotation-path-prefix PATH]
 ```
 
 It also runs as `python -m test_strength_gate`. The default test patterns are `test_*.py`, `*_test.py`, `tests/**` and `**/conftest.py`, so data files under `tests/` travel with the tests. A pattern without a slash matches a file name in any directory, and a pattern with a slash matches from the repository root.
+
+In a GitHub workflow, `--annotation-path-prefix` is the repository's path from the workspace root, which the action sets from its `path` input, so that each annotation points at the right file.
 
 The exit code is 0, or 1 when you pass `--fail-on weak` and a test is weak, or 2 when git can't resolve the commits or a file path in git's output isn't UTF-8. When `GITHUB_STEP_SUMMARY` is set, the markdown report is appended to it.
 

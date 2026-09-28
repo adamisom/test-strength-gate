@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import posixpath
 import shlex
 import sys
 from pathlib import Path
@@ -30,7 +31,25 @@ def parse_args(argv):
     p.add_argument("--markdown", type=Path, help="write the markdown report here")
     p.add_argument("--fail-on", choices=["weak", "none"], default="none",
                    help="exit 1 if any test is WEAK (default: none, report only)")
+    p.add_argument("--annotation-path-prefix", default=".", metavar="PATH",
+                   help="in a GitHub workflow, the repository's path from the workspace root, put in "
+                        "front of the file path of each annotation (default: .)")
     return p.parse_args(argv)
+
+
+def _escape_data(text):
+    """Escape a workflow command's message, as GitHub's runner expects."""
+    return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def _escape_property(text):
+    """Escape a workflow command's property value, such as file=."""
+    return _escape_data(text).replace(":", "%3A").replace(",", "%2C")
+
+
+def _annotation(file, title, message, prefix):
+    path = posixpath.normpath(posixpath.join(prefix, file)) if posixpath.normpath(prefix or ".") != "." else file
+    return f"::warning file={_escape_property(path)},title={_escape_property(title)}::{_escape_data(message)}"
 
 
 def main(argv=None):
@@ -57,13 +76,15 @@ def main(argv=None):
 
     weak = [t for t in result.tests if t.verdict == WEAK]
     if os.environ.get("GITHUB_ACTIONS") == "true":
+        # The file path must be relative to the workspace root, while test
+        # IDs are relative to the repository, which may be in a subfolder.
+        prefix = args.annotation_path_prefix
         for t in weak:  # shows as a warning on the PR's Files tab
-            print(f"::warning file={t.id.split('::')[0]},title=Weak test::"
-                  f"{t.id} passes without the source change")
+            print(_annotation(t.id.split("::")[0], "Weak test", f"{t.id} passes without the source change", prefix))
         for t in result.tests:
             if t.is_file:  # a test file whose tests could not be judged at head
                 why = "fails to import at head" if t.verdict == BROKEN_AT_HEAD else "could not be run at head"
-                print(f"::warning file={t.id},title=Test file not judged::{t.id} {why}")
+                print(_annotation(t.id, "Test file not judged", f"{t.id} {why}", prefix))
 
     # A tests-only PR has no source change to catch, so its weak tests don't fail the gate.
     if args.fail_on == "weak" and weak and result.pr_kind != "tests_only":

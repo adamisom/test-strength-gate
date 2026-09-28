@@ -554,3 +554,18 @@ def test_a_usage_error_gives_pytests_error_line_not_the_rootdir_line(tmp_path):
     (tmp_path / "test_x.py").write_text("def test_a():\n    pass\n")
     data = runner.run_pytest(sys.executable, tmp_path, ["test_x.py"], tmp_path, ["--no-such-option"])
     assert "unrecognized arguments: --no-such-option" in data["startup_error"]
+
+
+def test_annotations_are_relative_to_the_workspace_and_escaped(repo, monkeypatch, capsys):
+    # Fable audit TSG-11. With the action's path input set to a subfolder,
+    # the annotation's file must include it, and GitHub needs %, :, and , in
+    # the file property escaped.
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    base = repo.commit(SRC_BASE)
+    head = repo.commit({**SRC_HEAD, "tests/test_a,b%c.py": WEAK_TEST["tests/test_lib.py"]})
+    assert cli(repo, base, head, "--annotation-path-prefix", "./checkout/") == 0
+    out = capsys.readouterr().out
+    assert ("::warning file=checkout/tests/test_a%2Cb%25c.py,title=Weak test::"
+            "tests/test_a,b%25c.py::test_double passes without the source change") in out
+    assert cli(repo, base, head, "--annotation-path-prefix", ".") == 0
+    assert "::warning file=tests/test_a%2Cb%25c.py,title=Weak test::" in capsys.readouterr().out
