@@ -447,3 +447,39 @@ def test_installed_copy_under_xdist_makes_base_inconclusive(repo, tmp_path, monk
     assert test.verdict == INCONCLUSIVE
     assert "outside the base worktree" in test.reason and "mypkg" in test.reason
     assert any("outside the head worktree" in w for w in result.warnings)
+
+
+def test_x_in_addopts_does_not_stop_the_judged_runs(repo):
+    # Fable audit TSG-3. With -x in addopts, the first failure stopped each
+    # run: at base the later tests were "not collected", and at head they
+    # were BROKEN_AT_HEAD. The runner now passes --maxfail=0 after them.
+    x = {"pytest.ini": "[pytest]\naddopts = -x\n"}
+    base = repo.commit({**SRC_BASE, **x})
+    head = repo.commit({**SRC_HEAD, "tests/test_lib.py": "import lib\n\ndef test_a_broken():\n"
+                        "    assert lib.half(3) == 99\n\ndef test_b_half():\n    assert lib.half(3) == 1.5\n\n"
+                        "def test_c_double():\n    assert lib.double(3) == 6\n"})
+    result = repo.gate(base, head)
+    assert [(t.id.split("::")[1], t.verdict) for t in result.tests] == [
+        ("test_a_broken", BROKEN_AT_HEAD), ("test_b_half", STRONG), ("test_c_double", WEAK)]
+
+
+def _run_with_an_early_exit(tmp_path, *extra):
+    (tmp_path / "test_x.py").write_text("import pytest\n\ndef test_a():\n    pytest.exit('stop here')\n\n"
+                                        "def test_b():\n    pass\n")
+    return runner.run_pytest(sys.executable, tmp_path, ["test_x.py"], tmp_path, extra,
+                             select=["test_x.py::test_a", "test_x.py::test_b"])
+
+
+def test_plugin_lists_tests_that_were_collected_but_not_run(tmp_path):
+    # Fable audit TSG-3. items holds what was collected, and results what ran,
+    # so the gate can tell "collected but not run" from "not collected".
+    data = _run_with_an_early_exit(tmp_path)
+    assert data["items"] == ["test_x.py::test_a", "test_x.py::test_b"]
+    assert "test_x.py::test_b" not in data["results"]
+
+
+@needs_xdist
+def test_plugin_lists_collected_tests_under_xdist(tmp_path):
+    # Under xdist the main process doesn't collect, so the workers' lists are used.
+    data = _run_with_an_early_exit(tmp_path, "-n", "2")
+    assert sorted(data["items"]) == ["test_x.py::test_a", "test_x.py::test_b"]

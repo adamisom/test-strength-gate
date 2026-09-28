@@ -158,19 +158,20 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
     if head_run["misrouted"]:
         result.warnings.append("The head run loaded project code from outside the head worktree: "
                                + _misrouted_message(head_run["misrouted"]))
+    base_items, head_items = set(base_run["items"]), set(head_run["items"])
     for test_id, kind in judged.items():
         file = test_id.split("::")[0]
         if base_run["misrouted"]:
             # The base run tested the wrong code, so none of its results count.
             base_outcome = Outcome("error", "misrouted", message=_misrouted_message(base_run["misrouted"]))
         else:
-            base_outcome = summarize(base_run["results"].get(test_id),
-                                     base_run["collect_errors"].get(file), base_run.get("startup_error"))
+            base_outcome = summarize(base_run["results"].get(test_id), base_run["collect_errors"].get(file),
+                                     base_run.get("startup_error"), test_id in base_items)
             if base_outcome.missing_path:
                 base_outcome.file_at_head = gitutil.exists(repo, head_sha, base_outcome.missing_path)
             _set_origin(base_outcome, globs)
-        head_outcome = summarize(head_run["results"].get(test_id),
-                                 head_run["collect_errors"].get(file), head_run.get("startup_error"))
+        head_outcome = summarize(head_run["results"].get(test_id), head_run["collect_errors"].get(file),
+                                 head_run.get("startup_error"), test_id in head_items)
         label, reason = verdict(base_outcome, head_outcome)
         result.tests.append(JudgedTest(test_id, kind, base_outcome, head_outcome, label, reason))
     return result

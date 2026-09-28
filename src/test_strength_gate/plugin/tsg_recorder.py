@@ -11,7 +11,8 @@ Settings come from environment variables:
   TSG_ORIGINAL_REPO  optional path of the real checkout, to spot imports from it
 
 The JSON has four keys:
-  items           IDs of collected (and selected) tests
+  items           IDs of collected (and selected) tests; one listed here but
+                  missing from results was collected but not run
   collect_errors  {file: last error line} for files that failed to import
   results         {id: {phase: {outcome, exc_type, message, attr_owner, missing_path,
                                 raised_at, raised_inside, local_at, source_line,
@@ -70,6 +71,15 @@ def pytest_collection_modifyitems(config, items):
 
 def pytest_collection_finish(session):
     _data["items"] = [_canonical_id(i.path, i.nodeid) for i in session.items]
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_xdist_node_collection_finished(node, ids):
+    """Under pytest-xdist the main process collects nothing, so take each worker's list."""
+    for nodeid in ids:
+        test_id = _canonical_id(_config.rootpath / nodeid.split("::")[0], nodeid)
+        if test_id not in _data["items"]:
+            _data["items"].append(test_id)
 
 
 def pytest_collectreport(report):

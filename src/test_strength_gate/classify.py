@@ -81,7 +81,8 @@ def failure_kind(exc_type, message, attr_owner=None, file_at_head=False, origin=
 @dataclass
 class Outcome:
     status: str          # passed, failed, error, skipped, not_run
-    phase: str = ""      # setup, call, teardown, collect, startup, misrouted
+    phase: str = ""      # setup, call, teardown, collect, startup, misrouted; for not_run,
+                         # "collected" if pytest collected the test but never ran it
     exc_type: str = ""
     message: str = ""
     attr_owner: str = ""
@@ -106,20 +107,27 @@ class Outcome:
         if self.status in ("passed", "skipped"):
             return self.status
         if self.status == "not_run":
-            return "not run"
+            return "not collected" if self.message == "not collected" else "not run"
         where = "failed" if self.status == "failed" else f"error in {self.phase}"
         # pytest.raises and pytest.fail raise "Failed"; its message says more.
         label = _short(self.message, 30) if self.exc_type == "Failed" else self.exc_type
         return f"{where} ({label})" if label else where
 
 
-def summarize(phases, collect_error=None, startup_error=None):
-    """Collapse a test's per-phase records (from the plugin) into one Outcome."""
+def summarize(phases, collect_error=None, startup_error=None, collected=False):
+    """Collapse a test's per-phase records (from the plugin) into one Outcome.
+
+    collected is True when the plugin listed the test among the collected
+    items, so a test without records was collected but never ran, e.g.
+    because something stopped the session early.
+    """
     if not phases:
         if collect_error:
             return Outcome("error", "collect", message=collect_error)
         if startup_error:
             return Outcome("error", "startup", message=startup_error)
+        if collected:
+            return Outcome("not_run", "collected", message="collected but not run")
         return Outcome("not_run", message="not collected")
     for phase in ("setup", "call", "teardown"):
         rec = phases.get(phase)
@@ -153,6 +161,13 @@ def verdict(base, head):
         # A timeout or internal error ended the whole run, so the test's own
         # result at head is unknown. That is not the same as failing there.
         return INCONCLUSIVE, f"pytest failed as a whole at head, so the test was not judged: {_short(head.message)}"
+    if head.status == "not_run":
+        # No result at head is not a failure there (see the startup case above).
+        if head.phase == "collected":
+            return INCONCLUSIVE, ("Collected at head but not run, e.g. because the session stopped early, "
+                                  "so its result at head is unknown.")
+        return INCONCLUSIVE, ("Not collected at head (its ID may change between runs), "
+                              "so its result at head is unknown.")
     if head.status != "passed":
         detail = f": {_short(head.message)}" if head.message else ""
         return BROKEN_AT_HEAD, f"Does not pass at head ({head.describe()}{detail})."
@@ -162,6 +177,9 @@ def verdict(base, head):
     if base.status == "skipped":
         return SKIPPED, "Skipped at base."
     if base.status == "not_run":
+        if base.phase == "collected":
+            return INCONCLUSIVE, ("Collected at base but not run, e.g. because the session stopped early, "
+                                  "so its result at base is unknown.")
         return INCONCLUSIVE, "Not collected at base (its ID may depend on base code)."
     if base.status == "error":
         what = {"collect": "The file fails to import at base",

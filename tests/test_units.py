@@ -201,7 +201,22 @@ def test_head_failure_overrides_a_strong_base():
     base = summarize({"call": phase("failed", "AssertionError", "assert 0")})
     head = summarize({"setup": phase("failed", "RuntimeError", "db down")})
     assert verdict(base, head)[0] == BROKEN_AT_HEAD
-    assert verdict(base, summarize(None))[0] == BROKEN_AT_HEAD  # not collected at head
+    # Fable audit TSG-3. A test that was not collected at head, or collected
+    # but not run there, has no head result, so it is not shown to fail there.
+    for head, words in [(summarize(None), "Not collected at head"),
+                        (summarize(None, collected=True), "Collected at head but not run")]:
+        label, reason = verdict(base, head)
+        assert label == INCONCLUSIVE and reason.startswith(words)
+
+
+def test_collected_but_not_run_at_base_has_its_own_reason():
+    # Fable audit TSG-3. With -x in addopts the session used to stop at the
+    # first failure, and the later tests were called "not collected at base".
+    label, reason = verdict(summarize(None, collected=True), PASSED)
+    assert label == INCONCLUSIVE and reason.startswith("Collected at base but not run")
+    assert verdict(summarize(None), PASSED)[1].startswith("Not collected at base")
+    assert summarize(None, collected=True).describe() == "not run"
+    assert summarize(None).describe() == "not collected"
 
 
 def test_collect_and_startup_errors_are_inconclusive():

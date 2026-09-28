@@ -43,8 +43,11 @@ def run_pytest(python, worktree, files, original_repo, extra_args=(), select=Non
             select_file.write_text(json.dumps(sorted(select)))
             env["TSG_SELECT"] = str(select_file)
 
+        # --maxfail=0 comes after the project's own arguments, so a -x or
+        # --maxfail in addopts or pytest-args can't stop the run at the first
+        # failure and leave the later judged tests without a result.
         cmd = [python, "-m", "pytest", "-p", "tsg_recorder", "-p", "no:cacheprovider",
-               "--continue-on-collection-errors", "-q", *extra_args]
+               "--continue-on-collection-errors", "-q", *extra_args, "--maxfail=0"]
         if collect_only:
             cmd.append("--collect-only")
         cmd += list(files)
