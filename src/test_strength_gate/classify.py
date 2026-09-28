@@ -28,6 +28,11 @@ MISSING_API_ERRORS = {"ImportError", "ModuleNotFoundError", "NameError"}
 ARGUMENT_MISMATCH = re.compile(
     r"unexpected keyword argument|positional argument|required (?:keyword|positional)"
     r"|takes no arguments|takes \d+|missing \d+ required"
+    # Python's other wordings, e.g. "got multiple values for argument 'b'" for
+    # a test that passes by keyword a parameter the PR moved, and the ones C
+    # functions use, e.g. "takes at most 2 arguments" or "expected 2 arguments, got 3".
+    r"|multiple values for argument|positional-only argument|takes no keyword arguments"
+    r"|takes (?:exactly|at most|at least) |expected (?:(?:at most|at least|exactly) )?\d+ arguments?\b"
 )
 
 

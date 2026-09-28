@@ -134,7 +134,21 @@ def test_pick_judged():
     ("TypeError", "add() got an unexpected keyword argument 'c'", "missing_api"),
     ("TypeError", "add() takes 2 positional arguments but 3 were given", "missing_api"),
     ("TypeError", "add() missing 1 required positional argument: 'b'", "missing_api"),
+    # Fable audit TSG-1: other wordings Python and C functions use for a call
+    # that doesn't fit the signature, e.g. a test calling a new signature.
+    ("TypeError", "f() got multiple values for argument 'b'", "missing_api"),
+    ("TypeError", "f() got some positional-only arguments passed as keyword arguments: 'b'", "missing_api"),
+    ("TypeError", "f() takes exactly 2 arguments (3 given)", "missing_api"),
+    ("TypeError", "f() takes at most 2 arguments (3 given)", "missing_api"),
+    ("TypeError", "f() takes at least 1 argument (0 given)", "missing_api"),
+    ("TypeError", "dict.get() takes no keyword arguments", "missing_api"),
+    ("TypeError", "f expected at most 2 arguments, got 3", "missing_api"),
+    ("TypeError", "f expected at least 1 argument, got 0", "missing_api"),
+    ("TypeError", "f expected exactly 2 arguments, got 1", "missing_api"),
+    ("TypeError", "divmod expected 2 arguments, got 1", "missing_api"),
+    ("TypeError", "len() takes exactly one argument (2 given)", "missing_api"),
     ("TypeError", "unsupported operand type(s) for +: 'int' and 'str'", "other_error"),
+    ("TypeError", "expected str, bytes or os.PathLike object, not NoneType", "other_error"),
     ("ValueError", "bad input", "other_error"),
 ])
 def test_failure_kind(exc_type, message, kind):
