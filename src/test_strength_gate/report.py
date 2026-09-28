@@ -63,7 +63,7 @@ Each judged test was run twice, once on the base commit with only the PR's test-
 
 
 PR_KIND_NOTES = {
-    "tests_only": "This PR changes no Python source outside its test files, so its tests are expected "
+    "tests_only": "This PR changes no source outside its test files and docs, so its tests are expected "
                   "to pass at base. Weak results are normal here.",
     "all_weak": "Every judged test passes without the source change. That is expected for a refactor, "
                 "or for tests that pin down existing behavior. For a bug fix or a new feature, it suggests "

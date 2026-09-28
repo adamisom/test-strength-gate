@@ -38,8 +38,13 @@ class GateResult:
 
     @property
     def pr_kind(self):
-        """'tests_only', 'all_weak' (looks like a refactor), or 'normal'."""
-        if not self.source_files:
+        """'tests_only', 'all_weak' (looks like a refactor), or 'normal'.
+
+        A PR is tests only when it changes no Python source and no other
+        non-doc file outside the test patterns, such as a template or a
+        compiled extension's source, which can carry behavior too.
+        """
+        if not self.source_files and not self.other_files:
             return "tests_only"
         judged = [t for t in self.tests if t.verdict not in (SKIPPED, BROKEN_AT_HEAD) and not t.is_file]
         if judged and all(t.verdict == WEAK for t in judged):

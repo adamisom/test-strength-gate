@@ -160,6 +160,7 @@ Source: changed after research.
 - **Choice.** The tool counts changed Python files that are not tests. With none, the PR is tests-only. The report says weak results are normal, and `--fail-on weak` doesn't fail it. When source changed and every judged test is weak, the report says once that this is expected for a refactor and suspicious for a feature.
 - **Alternatives.** A PR label to opt out, as Yosemite-Crew does, or a `control` marker on tests, as pyrite does.
 - **Why.** One sentence at the top reads better than a table of identical warnings, and it needs nothing from the PR author.
+- **Changed.** Decision 38 counts changed non-Python files outside the patterns as source too.
 
 ## 16. Report wording treats weak as a signal
 
@@ -375,3 +376,13 @@ Source: Fable audit, 9/28/26 (TSG-3).
 - **Choice.** The runner appends `--maxfail=0` after the project's arguments, which overrides `-x` from `addopts` or `--pytest-args` (checked on pytest 9.1.1 and 7.4.4). The plugin's `items` list, which already held the collected tests, is now filled under pytest-xdist too, from the workers' collection. A test in `items` with no result was collected but not run, and it gets its own reason, "Collected at base but not run, e.g. because the session stopped early". At head, a test that was not collected or not run is INCONCLUSIVE, because its result there is unknown, which is the principle of decision 32. A test that runs at head and fails is still BROKEN_AT_HEAD.
 - **Alternatives.** Run each test file in its own pytest process, which is slower and still leaves a stop inside one file. Or `-o addopts=`, which would drop every other option the project needs.
 - **Why.** A project's wish to stop at the first failure is for its own test runs, and the gate needs a result for every judged test. "Does not pass at head" should mean the test ran at head and failed. Something else can still end a session early, such as `pytest.exit()` or `--sw` in `addopts`, and those tests now say they were not run. On the evaluation every judged test ran at base and at head, so no verdict changed. Tests cover it (`test_x_in_addopts_does_not_stop_the_judged_runs`, `test_collected_but_not_run_at_base_has_its_own_reason`, `test_head_failure_overrides_a_strong_base`, `test_plugin_lists_tests_that_were_collected_but_not_run`, `test_plugin_lists_collected_tests_under_xdist`).
+
+## 38. A PR is tests only when it changes nothing outside its tests and docs
+
+Source: Fable audit, 9/28/26 (TSG-4).
+
+- **Before.** Decision 15 called a PR tests only when it changed no Python file outside the test patterns. Such a PR gets the note that weak results are normal, and `--fail-on weak` doesn't fail it.
+- **Evidence.** Python projects also keep behavior in files that are not `.py`, such as a template, a SQL file, a YAML config the code reads, or a C extension. In the audit's scratch case, the PR changes only `greeting.txt`, which `app.py` reads, and adds a test. The report printed the tests-only note, then the changed-inputs note for `greeting.txt`, then a STRONG row, and `--fail-on weak` would have ignored a weak test.
+- **Choice.** A PR is tests only when it changes no Python source and `other_files` is empty, i.e. no non-Python file outside the patterns other than docs changed or was deleted. The note now says "changes no source outside its test files and docs". The README's limits also say that a PR whose source change is in a compiled extension gives weak verdicts that mean nothing, because extensions are not rebuilt at base.
+- **Alternatives.** Keep the rule and only hide the note when a verdict is strong. That fixes the contradiction in the report, but `--fail-on weak` would still ignore weak tests in such a PR.
+- **Why.** Any changed input outside the tests can be the change a test should catch, which is why decision 33 already names these files in the report. A PR that also changes a config file the tests don't read loses the tests-only note, which is the safer mistake. Every evaluation PR changed Python source, and none had other files, so no label or verdict changed. Tests cover it (`test_a_pr_whose_source_change_is_a_non_python_file_is_not_tests_only`, `test_a_pr_that_changes_only_tests_and_docs_is_still_tests_only`).

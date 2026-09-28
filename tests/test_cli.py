@@ -483,3 +483,25 @@ def test_plugin_lists_collected_tests_under_xdist(tmp_path):
     # Under xdist the main process doesn't collect, so the workers' lists are used.
     data = _run_with_an_early_exit(tmp_path, "-n", "2")
     assert sorted(data["items"]) == ["test_x.py::test_a", "test_x.py::test_b"]
+
+
+def test_a_pr_whose_source_change_is_a_non_python_file_is_not_tests_only(repo, tmp_path):
+    # Fable audit TSG-4. The PR changes only a template the code reads, and
+    # adds tests. It used to be "tests only", so the report said weak was
+    # normal next to a strong row, and --fail-on weak never failed.
+    app = "import pathlib\n\ndef render():\n    return pathlib.Path(__file__).with_name('greeting.txt').read_text().strip()\n"
+    base = repo.commit({"app.py": app, "greeting.txt": "hello\n"})
+    head = repo.commit({"greeting.txt": "hi there\n", "docs/notes.md": "new\n",
+                        "tests/test_app.py": "import app\n\ndef test_render():\n    assert app.render() == 'hi there'\n\n"
+                        "def test_render_is_text():\n    assert isinstance(app.render(), str)\n"})
+    result = repo.gate(base, head)
+    assert result.pr_kind == "normal"
+    out = tmp_path / "r.md"
+    assert cli(repo, base, head, "--fail-on", "weak", "--markdown", str(out)) == 1
+    assert "Weak results are normal here" not in out.read_text()
+
+
+def test_a_pr_that_changes_only_tests_and_docs_is_still_tests_only(repo):
+    base = repo.commit({**SRC_BASE, "docs/notes.md": "old\n"})
+    head = repo.commit({**WEAK_TEST, "docs/notes.md": "new\n"})
+    assert repo.gate(base, head).pr_kind == "tests_only"
