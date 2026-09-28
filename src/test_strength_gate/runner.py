@@ -45,9 +45,11 @@ def run_pytest(python, worktree, files, original_repo, extra_args=(), select=Non
 
         # --maxfail=0 comes after the project's own arguments, so a -x or
         # --maxfail in addopts or pytest-args can't stop the run at the first
-        # failure and leave the later judged tests without a result.
-        cmd = [python, "-m", "pytest", "-p", "tsg_recorder", "-p", "no:cacheprovider",
-               "--continue-on-collection-errors", "-q", *extra_args, "--maxfail=0"]
+        # failure and leave the later judged tests without a result. The cache
+        # goes to this run's temp dir rather than into the worktree; the cache
+        # plugin stays on, because options such as --ff in addopts belong to it.
+        cmd = [python, "-m", "pytest", "-p", "tsg_recorder", "--continue-on-collection-errors", "-q",
+               *extra_args, "--maxfail=0", "-o", f"cache_dir={Path(tmp) / 'cache'}"]
         if collect_only:
             cmd.append("--collect-only")
         cmd += list(files)
@@ -65,5 +67,8 @@ def run_pytest(python, worktree, files, original_repo, extra_args=(), select=Non
         if not recorded and (not out.exists() or proc.returncode in (2, 3, 4)):
             lines = [ln.strip() for ln in (proc.stdout + proc.stderr).splitlines() if ln.strip()]
             errors = [ln[1:].strip() for ln in lines if ln.startswith("E ")]
+            # A usage error has no "E " line, and pytest prints inifile: and
+            # rootdir: lines after it, so look for the line that says "error:".
+            errors = errors or [ln for ln in lines if "error:" in ln.lower()]
             data["startup_error"] = (errors or lines or [f"pytest exited with code {proc.returncode}"])[-1]
         return data

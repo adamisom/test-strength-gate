@@ -530,3 +530,27 @@ def test_a_decoding_error_exits_2_with_a_message(repo, monkeypatch, capsys):
     head = repo.commit(SRC_BASE)
     assert cli(repo, head, head) == 2
     assert "can't decode byte 0xe9" in capsys.readouterr().err
+
+
+def test_cache_options_in_addopts_still_work(repo):
+    # Fable audit TSG-10. The runner turned the cache plugin off, so --ff in
+    # addopts was a usage error and every test came out inconclusive.
+    ff = {"pytest.ini": "[pytest]\naddopts = --ff\n"}
+    base = repo.commit({**SRC_BASE, **ff})
+    head = repo.commit({**SRC_HEAD, **STRONG_TEST})
+    assert [t.verdict for t in repo.gate(base, head).tests] == [STRONG]
+
+
+def test_runs_write_no_cache_into_the_worktree(tmp_path):
+    (tmp_path / "test_x.py").write_text("def test_a():\n    assert 0\n")
+    data = runner.run_pytest(sys.executable, tmp_path, ["test_x.py"], tmp_path)
+    assert "test_x.py::test_a" in data["results"]
+    assert not (tmp_path / ".pytest_cache").exists()
+
+
+def test_a_usage_error_gives_pytests_error_line_not_the_rootdir_line(tmp_path):
+    # Fable audit TSG-10. pytest prints its usage error, then inifile: and
+    # rootdir: lines, and the reason used to be the rootdir line.
+    (tmp_path / "test_x.py").write_text("def test_a():\n    pass\n")
+    data = runner.run_pytest(sys.executable, tmp_path, ["test_x.py"], tmp_path, ["--no-such-option"])
+    assert "unrecognized arguments: --no-such-option" in data["startup_error"]

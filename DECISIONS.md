@@ -140,6 +140,7 @@ Source: build, confirmed by research.
 - **Surprise.** A conftest.py in a directory on the command line is loaded when pytest starts, and an ImportError there makes pytest exit with code 4 before the session starts. So the plugin never writes its JSON and there are no per-test results.
 - **Choice.** When the JSON is missing, or pytest exits with code 2, 3 or 4 and nothing was recorded, the runner takes the last `E` line of pytest's output as the reason, and every test in that run is inconclusive with it. A per-run timeout of 900 seconds does the same for a hung run.
 - **Why.** The reason tells the reviewer exactly what happened, e.g., "pytest could not start at base: ModuleNotFoundError: No module named 'newhelpers'".
+- **Changed.** Without an `E` line, the reason is the last line that says "error:", since decision 41.
 
 ## 14. Making sure the base run really tests the base code
 
@@ -406,3 +407,13 @@ Source: Fable audit, 9/28/26 (TSG-8).
 - **Choice.** The step uses `"$PYTHON_BIN" -m pip` when pip is available, else `uv pip install --python "$PYTHON_BIN"` when `uv` is on PATH, else it fails with an `::error::` that says to install pip or uv in an earlier step. The inputs still reach the script only through env variables.
 - **Alternatives.** Skip the install and run the tool from `$ACTION_PATH/src` with `PYTHONPATH`. That needs no pip or uv, but `runner.py` copies `PYTHONPATH` into the pytest runs, so the project's tests would also see a `test_strength_gate` package unless the runner strips it.
 - **Why.** A project that uses uv has uv on PATH, so the fallback covers the case the audit found without changing how the tool runs. `tests/test_action.py` now runs the install step too, with a Python that has no pip, once with uv on PATH and once without it. The pip branch is the old command and has no local test, because a pip install of the action builds it with hatchling, which needs the network.
+
+## 41. The cache plugin stays on, with its cache in the run's temp folder
+
+Source: Fable audit, 9/28/26 (TSG-10).
+
+- **Before.** The runner passed `-p no:cacheprovider` so that pytest wrote no `.pytest_cache` into the worktrees. When a run failed as a whole and pytest printed no `E ` line, the reason was the last line of pytest's output (decision 13).
+- **Evidence.** Options such as `--ff`, `--lf`, `--nf`, `--cache-clear` and `--sw` belong to the cache plugin. In the audit's scratch case, a project with `--ff` in `addopts` got a usage error (exit code 4) in every run, so every test file was inconclusive. The inconclusive verdict was safe, but the reason was wrong, because pytest prints its usage error and then `inifile:` and `rootdir:` lines, and the reason was the `rootdir:` line.
+- **Choice.** The runner keeps the cache plugin and passes `-o cache_dir=<the run's temp folder>/cache` after the project's arguments, so nothing is written into the worktree and cache options in `addopts` work. The cache starts empty in every run, so `--lf` and `--ff` change nothing about which tests run. When pytest's output has no `E ` line, the reason is the last line that contains "error:", and only then the last line.
+- **Alternatives.** Keep the plugin off and strip cache options from `addopts`, which means parsing the project's configuration.
+- **Why.** The gate should run a project the way its own configuration expects, and a fresh cache in a temp folder has no effect on the verdicts. One side effect is that `--sw` in `addopts` now works, and it stops the run at the first failure as `-x` does, but `--maxfail=0` doesn't override it. The tests after that failure are then inconclusive with the reason "Collected at base but not run" (decision 37), where they used to be inconclusive with a usage error. The evaluation ran with `-p no:cacheprovider` and no cache options, so no verdict changed. Tests cover it (`test_cache_options_in_addopts_still_work`, `test_runs_write_no_cache_into_the_worktree`, `test_a_usage_error_gives_pytests_error_line_not_the_rootdir_line`).
