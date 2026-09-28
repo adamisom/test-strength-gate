@@ -11,10 +11,13 @@ inputs:
     description: >-
       Base commit. Default is the first parent of the pull_request merge commit
       that actions/checkout checks out, which is the base branch the merge was built on.
+      Set both base-sha and head-sha, or neither.
     required: false
     default: ''
   head-sha:
-    description: Head commit. Default is that merge commit itself, which is what the PR would merge.
+    description: >-
+      Head commit. Default is that merge commit itself, which is what the PR would merge.
+      Set both base-sha and head-sha, or neither.
     required: false
     default: ''
   test-globs:
@@ -88,7 +91,11 @@ runs:
       run: |
         set -euo pipefail
         set -f  # keep the glob patterns from expanding in the loop below
-        if [ -z "$BASE_SHA" ] || [ -z "$HEAD_SHA" ]; then
+        if { [ -z "$BASE_SHA" ] && [ -n "$HEAD_SHA" ]; } || { [ -n "$BASE_SHA" ] && [ -z "$HEAD_SHA" ]; }; then
+          echo "::error::Set both base-sha and head-sha, or neither. With neither, the action uses the pull_request merge commit and its first parent."
+          exit 1
+        fi
+        if [ -z "$BASE_SHA" ]; then
           # On pull_request, actions/checkout checks out a merge commit whose first
           # parent is the base branch and whose second parent is the PR head.
           if ! git rev-parse --verify --quiet 'HEAD^2' >/dev/null; then
@@ -98,8 +105,8 @@ runs:
           if [ -n "$PR_HEAD_SHA" ] && [ "$(git rev-parse 'HEAD^2')" != "$PR_HEAD_SHA" ]; then
             echo "::warning::The merge commit's second parent is not the PR head commit, so the checkout may be out of date."
           fi
-          BASE_SHA="${BASE_SHA:-$(git rev-parse 'HEAD^1')}"
-          HEAD_SHA="${HEAD_SHA:-$(git rev-parse HEAD)}"
+          BASE_SHA="$(git rev-parse 'HEAD^1')"
+          HEAD_SHA="$(git rev-parse HEAD)"
         fi
         report="$RUNNER_TEMP/test-strength-gate"
         echo "json-report=$report.json" >> "$GITHUB_OUTPUT"

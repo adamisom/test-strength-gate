@@ -71,12 +71,12 @@ jobs:
           fail-on: none
 ```
 
-On `pull_request`, `actions/checkout` checks out a merge commit. By default the action uses the merge commit's first parent as base and the merge commit itself as head, so it judges exactly what the PR would merge. You can pass `base-sha` and `head-sha` instead, and then you need `fetch-depth: 0`.
+On `pull_request`, `actions/checkout` checks out a merge commit. By default the action uses the merge commit's first parent as base and the merge commit itself as head, so it judges exactly what the PR would merge. You can pass both `base-sha` and `head-sha` instead, and then you need `fetch-depth: 0`. Passing only one of them is an error.
 
 | Input | Default | Meaning |
 | --- | --- | --- |
-| `base-sha` | first parent of the merge commit | base commit |
-| `head-sha` | the merge commit | head commit |
+| `base-sha` | first parent of the merge commit | base commit, set together with `head-sha` |
+| `head-sha` | the merge commit | head commit, set together with `base-sha` |
 | `test-globs` | the tool's list | space-separated test file patterns |
 | `pytest-args` | none | extra pytest arguments |
 | `fail-on` | `none` | `weak` fails the step when any test is weak, except on tests-only PRs |

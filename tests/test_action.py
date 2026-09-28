@@ -96,3 +96,17 @@ def test_install_step_uses_uv_when_the_python_has_no_pip(tmp_path):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     check = subprocess.run([str(python), "-c", "import test_strength_gate.cli"], capture_output=True, text=True)
     assert check.returncode == 0, check.stderr
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+@pytest.mark.parametrize("base_sha, head_sha", [("abc123", ""), ("", "abc123")])
+def test_run_step_requires_both_shas_or_neither(tmp_path, base_sha, head_sha):
+    # Fable audit TSG-12. With only one set, the step used to fall back to the
+    # merge commit for both, or mix the caller's head with HEAD^1 as base.
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "RUNNER_TEMP": str(tmp_path),
+           "GITHUB_OUTPUT": str(tmp_path / "out"), "BASE_SHA": base_sha, "HEAD_SHA": head_sha, "PR_HEAD_SHA": "",
+           "TEST_GLOBS": "", "PYTEST_ARGS": "", "FAIL_ON": "none", "PYTHON_BIN": sys.executable, "REPO_PATH": "."}
+    proc = subprocess.run(["bash", "-c", step_script("Run test-strength-gate")], cwd=tmp_path, env=env,
+                          capture_output=True, text=True)
+    assert proc.returncode == 1
+    assert "::error::Set both base-sha and head-sha, or neither." in proc.stdout

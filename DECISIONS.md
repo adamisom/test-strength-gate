@@ -427,3 +427,13 @@ Source: Fable audit, 9/28/26 (TSG-11).
 - **Choice.** A new option, `--annotation-path-prefix`, gives the repository's path from the workspace root, and the CLI puts it in front of each annotation's file path unless it is `.`. `action.yml` passes the `path` input to it through an env variable, like every other input. The `file=` and `title=` values escape `%`, `:`, `,`, `\r` and `\n`, and the message escapes `%`, `\r` and `\n`.
 - **Alternatives.** Have the CLI work out the prefix from `GITHUB_WORKSPACE` and the repository path. That would work only in a workflow and would resolve symlinks in ways that are hard to test, while the action already knows the `path` input.
 - **Why.** An annotation is useful only when it lands on the file. The evaluation ran outside GitHub, so no verdict changed. Tests cover it (`test_annotations_are_relative_to_the_workspace_and_escaped`, and `test_action_run_step_on_a_shallow_merge_commit` with the `path` input set to `.` and to a subfolder).
+
+## 43. The action takes both base-sha and head-sha, or neither
+
+Source: Fable audit, 9/28/26 (TSG-12).
+
+- **Before.** The action's run step used its default, the merge commit and its first parent, whenever either input was empty, and filled in only the empty one.
+- **Evidence.** A caller who passed only `head-sha` got the "HEAD is not a merge commit" error on a checkout that isn't a merge commit. On a merge checkout, the caller got `HEAD^1` as base against their own head, which mixes the two meanings. The README said both inputs can be passed, and the input descriptions didn't say they go together.
+- **Choice.** The run step fails with an `::error::` when exactly one of the two inputs is set. Both input descriptions and the README say to set both or neither. With neither, the default is unchanged.
+- **Alternatives.** Fill in the missing one from the merge commit, as before, and document it. Neither half of that mix is what a caller who sets one input by hand is likely to want.
+- **Why.** A clear error on the first run is better than a gate that silently judges the wrong commits. The evaluation ran the CLI, so no verdict changed. A test covers both cases (`test_run_step_requires_both_shas_or_neither`).
