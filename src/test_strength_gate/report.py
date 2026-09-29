@@ -97,6 +97,13 @@ def _copied_imported_note(paths):
             f"base for that reason, so tests that pass at base are inconclusive here rather than weak.")
 
 
+def _packaging_note(paths):
+    shown = ", ".join(f"`{_cell(p)}`" for p in paths)
+    return (f"**Check weak verdicts against the installed metadata.** The PR changes {shown}. The base run "
+            f"reads the installed package's metadata, such as its version and entry points, and that install "
+            f"was made from head, so a test that checks them can pass at base and look weak.")
+
+
 def to_markdown(result):
     lines = ["## Test strength gate", "", summary_line(result.tests), ""]
     if result.tests and result.pr_kind in PR_KIND_NOTES:
@@ -105,6 +112,8 @@ def to_markdown(result):
         lines += [_other_files_note(result.other_files, set(result.deleted_files)), ""]
     if result.copied_imported and any(t.base.status == "passed" for t in result.tests):
         lines += [_copied_imported_note(result.copied_imported), ""]
+    if result.packaging_files and any(t.verdict == WEAK for t in result.tests):
+        lines += [_packaging_note(result.packaging_files), ""]
     lines += [f"Base `{result.base[:10]}`, head `{result.head[:10]}`. Changed test files: "
               f"{len(result.test_files)}. Changed Python source files: {len(result.source_files)}.", ""]
     if result.tests:

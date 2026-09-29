@@ -38,6 +38,9 @@ class GateResult:
     # git-ignored .py files copied from the checkout into the base worktree
     # that the base run imported; they were generated for head
     copied_imported: list = field(default_factory=list)
+    # changed packaging files; the base run reads the installed package's
+    # metadata (version, entry points), which head's install wrote
+    packaging_files: list = field(default_factory=list)
 
     @property
     def pr_kind(self):
@@ -62,6 +65,12 @@ def _set_origin(outcome, globs):
         outcome.origin = ("library" if not outcome.raised_inside
                           else "test" if matches_any(path, globs) else "project")
     return outcome
+
+
+# Files whose change reaches the installed package's metadata. The action
+# installs the project at head, and importlib.metadata reads that install's
+# .dist-info in the base run too, whatever sys.path says.
+PACKAGING_FILES = {"pyproject.toml", "setup.py", "setup.cfg"}
 
 
 def _is_docs(path):
@@ -90,6 +99,8 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
     for status, path in gitutil.changed_files(repo, base_sha, head_sha):
         if status == "D":
             result.deleted_files.append(path)
+        if PurePosixPath(path).name in PACKAGING_FILES:
+            result.packaging_files.append(path)
         if matches_any(path, globs):
             if status != "D":
                 result.test_files.append(path)
@@ -194,5 +205,9 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
             reason = (f"Passes at base, but the base run imported or read "
                       f"{', '.join(result.copied_imported)}, which the gate copied from the checkout and which was generated "
                       f"for head, so the pass may come from head's values in it.")
+        if label == WEAK and result.packaging_files:
+            reason += (f" The PR changes {', '.join(result.packaging_files)}, and the base run reads installed "
+                       f"metadata such as the version and entry points from head's install, so check that the "
+                       f"test doesn't depend on it.")
         result.tests.append(JudgedTest(test_id, kind, base_outcome, head_outcome, label, reason))
     return result

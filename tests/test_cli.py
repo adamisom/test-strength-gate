@@ -269,6 +269,28 @@ def test_a_copied_module_the_base_run_never_imported_adds_no_caveat(repo):
     assert "generated for head" not in result.tests[0].reason
 
 
+def test_a_weak_verdict_says_when_the_pr_changes_packaging_metadata(repo, tmp_path, monkeypatch):
+    # Fable audit 2, TSG-18. importlib.metadata reads the installed package's
+    # .dist-info, which head's install wrote, so a test of a bumped version
+    # passes at base. The fake site folder stands in for that install.
+    site = tmp_path / "site"
+    (site / "metapkg-2.0.dist-info").mkdir(parents=True)
+    (site / "metapkg-2.0.dist-info" / "METADATA").write_text("Metadata-Version: 2.1\nName: metapkg\nVersion: 2.0\n")
+    monkeypatch.setenv("PYTHONPATH", str(site))
+    base = repo.commit({"pyproject.toml": "[project]\nname = 'metapkg'\nversion = '1.0'\n",
+                        "metapkg/__init__.py": "from importlib.metadata import version\n\n"
+                                               "__version__ = version('metapkg')\n"})
+    head = repo.commit({"pyproject.toml": "[project]\nname = 'metapkg'\nversion = '2.0'\n",
+                        "tests/test_version.py": "import metapkg\n\ndef test_version():\n"
+                                                 "    assert metapkg.__version__ == '2.0'\n"})
+    result = repo.gate(base, head)
+    [test] = result.tests
+    assert test.verdict == WEAK
+    assert result.packaging_files == ["pyproject.toml"]
+    assert "pyproject.toml" in test.reason and "head's install" in test.reason
+    assert "installed metadata" in to_markdown(result).split("| Test |")[0]
+
+
 def test_non_python_fixtures_are_copied_but_not_collected(repo):
     # A PR adds a data file under tests/ that its new test reads. With a glob
     # that matches it, the file travels to base but is not passed to pytest.
