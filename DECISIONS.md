@@ -472,3 +472,11 @@ Source: Fable audit, 9/28/26 (TSG-9). Not changed.
 - **Choice.** The fingerprint is unchanged. The README's limit on fixtures now also names module-level code in the test file, such as a constant, a helper function or `pytestmark`. The report's legend explains the verdicts and doesn't list what isn't judged, so it is unchanged.
 - **Alternatives.** Add the file's module-level statements, other than imports, functions and classes, to every fingerprint in that file, the way decision 29 adds a class's context.
 - **Why.** A module-level edit would then make every test in the file count as modified, and most of them would come out weak, much like the parametrize surprise in decision 6 and the whole-class option that decision 29 rejected. Following which tests use a changed constant or helper needs the same name tracking as the fixture gap in decision 20, and the two should be solved together.
+
+## 48. The argument TypeError pattern matches only messages Python writes itself
+Source: Codex review, 9/28/26 (TSG-16). Changes entry 35.
+
+- **Context.** Entry 35 widened `ARGUMENT_MISMATCH` with more of Python's wordings, but matched them anywhere in the message. Codex showed that old project code raising its own `TypeError("renderer takes at most 2 arguments for this input")` then came out INCONCLUSIVE, although it is a behavioral failure that the PR fixed.
+- **Choice.** The pattern is anchored to the shape of the messages Python writes for a call that doesn't fit a signature: the callable's name, then `()`, then one of the known phrases, or, for some C functions, the name followed by "expected N arguments, got M". Every wording the unit tests covered still matches, and qualified names such as `Foo.__init__()` and `<lambda>()` match too.
+- **Alternatives.** Decide from the traceback instead of the message, e.g. treat a `TypeError` raised in the test's own frame as a call mismatch. That misses a mismatch raised inside a project decorator's wrapper, which is why entry 26 keeps the message rule.
+- **Why.** A message that only sounds like a signature error is the project's own words, so it now falls to the rule for other exceptions: STRONG, with the conditional reason. No saved evaluation report has a `TypeError`, so no evaluation verdict changes.

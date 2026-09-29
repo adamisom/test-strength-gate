@@ -25,14 +25,18 @@ MISSING_API_ERRORS = {"ImportError", "ModuleNotFoundError", "NameError"}
 # called something wrongly. The verdict stays inconclusive, but the reason
 # says the cause is unclear. (A decorator's *args/**kwargs wrapper in the
 # project raises there too, for a real new keyword, so this can't be strong.)
+# Python writes these messages itself, and each starts with the callable's
+# name, e.g. "add() got an unexpected keyword argument 'c'", "f() takes 2
+# positional arguments but 3 were given", "len() takes exactly one argument
+# (2 given)", or, for some C functions, "divmod expected 2 arguments, got 1".
+# The pattern is anchored to that shape, so a project's own TypeError whose
+# words only sound like one, e.g. "renderer takes at most 2 arguments for this
+# input", stays behavior (Codex TSG-16).
+_CALLABLE = r"[\w.<>]+"
 ARGUMENT_MISMATCH = re.compile(
-    r"unexpected keyword argument|positional argument|required (?:keyword|positional)"
-    r"|takes no arguments|takes \d+|missing \d+ required"
-    # Python's other wordings, e.g. "got multiple values for argument 'b'" for
-    # a test that passes by keyword a parameter the PR moved, and the ones C
-    # functions use, e.g. "takes at most 2 arguments" or "expected 2 arguments, got 3".
-    r"|multiple values for argument|positional-only argument|takes no keyword arguments"
-    r"|takes (?:exactly|at most|at least) |expected (?:(?:at most|at least|exactly) )?\d+ arguments?\b"
+    rf"^{_CALLABLE}\(\) (?:got an unexpected keyword argument|got multiple values for argument"
+    rf"|got some positional-only argument|takes |missing \d+ required)"
+    rf"|^{_CALLABLE} expected (?:(?:at most|at least|exactly) )?\d+ arguments?, got \d+"
 )
 
 

@@ -147,12 +147,27 @@ def test_pick_judged():
     ("TypeError", "f expected exactly 2 arguments, got 1", "missing_api"),
     ("TypeError", "divmod expected 2 arguments, got 1", "missing_api"),
     ("TypeError", "len() takes exactly one argument (2 given)", "missing_api"),
+    # Codex TSG-16: a TypeError the project raises itself, whose words happen to
+    # match a signature message, is behavior, not a call that doesn't fit.
+    ("TypeError", "renderer takes at most 2 arguments for this input", "other_error"),
+    ("TypeError", "the handler expected 2 arguments, got 3 in config", "other_error"),
+    ("TypeError", "Foo.__init__() got an unexpected keyword argument 'c'", "missing_api"),
+    ("TypeError", "<lambda>() takes 1 positional argument but 2 were given", "missing_api"),
+    ("TypeError", "f() missing 1 required keyword-only argument: 'k'", "missing_api"),
     ("TypeError", "unsupported operand type(s) for +: 'int' and 'str'", "other_error"),
     ("TypeError", "expected str, bytes or os.PathLike object, not NoneType", "other_error"),
     ("ValueError", "bad input", "other_error"),
 ])
 def test_failure_kind(exc_type, message, kind):
     assert failure_kind(exc_type, message) == kind
+
+
+def test_a_project_typeerror_that_only_sounds_like_a_signature_error_is_strong():
+    """Codex TSG-16: old project code raising its own TypeError is a behavioral failure."""
+    msg = "renderer takes at most 2 arguments for this input"
+    assert failure_kind("TypeError", msg, origin="project") == "other_error"
+    base = Outcome("failed", "call", "TypeError", msg, raised_at="lib.py:3", raised_inside=True, origin="project")
+    assert verdict(base, PASSED)[0] == STRONG
 
 
 @pytest.mark.parametrize("origin, kind", [
