@@ -8,6 +8,7 @@ import sys
 
 import pytest
 
+from helpers import GitRepo
 from test_strength_gate.classify import BROKEN_AT_HEAD, INCONCLUSIVE, STRONG, WEAK
 from test_strength_gate import gate, runner
 from test_strength_gate.cli import main
@@ -195,6 +196,28 @@ def test_generated_modules_in_an_ignored_folder_are_copied_into_worktrees(repo):
     assert [t.verdict for t in result.tests] == [STRONG]
     [warning] = [w for w in result.warnings if "Copied git-ignored" in w]
     assert "pkg/gen/api_pb2.py" in warning and "envs/" not in warning
+
+
+def test_submodule_contents_reach_both_runs(repo, tmp_path):
+    # Fable audit 2, TSG-20. git worktree add leaves a submodule's folder
+    # empty, so a test that reads data from it failed in both runs and came
+    # out BROKEN_AT_HEAD. The gate fills it from the checkout's clone, and
+    # says so when it can't.
+    data = GitRepo(tmp_path / "data")
+    data.commit({"n.txt": "3\n"})
+    repo.commit(SRC_BASE)
+    repo.git("-c", "protocol.file.allow=always", "submodule", "add", "-q", str(data.path), "tests/data")
+    base = repo.commit({})
+    head = repo.commit({**SRC_HEAD, "tests/test_lib.py": "import lib\nfrom pathlib import Path\n\n"
+                        "def test_half():\n    n = int((Path(__file__).parent / 'data' / 'n.txt').read_text())\n"
+                        "    assert lib.half(n) == 1.5\n"})
+    result = repo.gate(base, head)
+    assert [t.verdict for t in result.tests] == [STRONG]
+    assert not any("Submodules" in w for w in result.warnings)
+
+    repo.git("submodule", "deinit", "-q", "-f", "tests/data")
+    result = repo.gate(base, head)
+    assert any(w.startswith("Submodules") and "tests/data" in w for w in result.warnings)
 
 
 def test_a_pass_at_base_that_imported_a_copied_generated_module_is_inconclusive(repo):

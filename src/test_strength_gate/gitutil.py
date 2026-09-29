@@ -1,8 +1,10 @@
 """Thin wrappers around the git commands the gate needs."""
 
+import io
 import os
 import shutil
 import subprocess
+import tarfile
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -135,3 +137,43 @@ def copy_generated_files(repo, worktree_path, paths):
             shutil.copy2(Path(repo) / rel, target)
             copied.append(rel)
     return copied
+
+
+def fill_submodules(repo, worktree_path, rev):
+    """Fill the worktree's submodule folders from the checkout's submodule clones.
+
+    `git worktree add` checks out the superproject only, so a submodule's
+    folder is empty. Each submodule's commit at `rev` is extracted from the
+    clone the checkout already has, with `git archive`, which needs no
+    network and writes no config. Nested submodules are filled the same way.
+    Returns the submodule paths that could not be filled, because the
+    checkout has no clone of the submodule or the clone lacks that commit.
+    """
+    missing = []
+    out = git(repo, "ls-tree", "-r", "-z", rev)
+    for line in filter(None, out.split("\0")):
+        meta, path = line.split("\t", 1)
+        mode, kind, sha = meta.split()
+        if kind != "commit":
+            continue
+        clone = Path(repo) / path
+        target = Path(worktree_path) / path
+        try:
+            toplevel = Path(git(clone, "rev-parse", "--show-toplevel").strip()).resolve()
+            ok = toplevel == clone.resolve() and subprocess.run(
+                ["git", "-C", str(clone), "cat-file", "-e", f"{sha}^{{commit}}"], capture_output=True).returncode == 0
+        except (GitError, OSError):
+            ok = False
+        if not ok:
+            missing.append(path)
+            continue
+        archive = subprocess.run(["git", "-C", str(clone), "archive", "--format=tar", sha],
+                                 capture_output=True, check=True).stdout
+        target.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+            if hasattr(tarfile, "data_filter"):
+                tar.extractall(target, filter="data")
+            else:
+                tar.extractall(target)
+        missing += [f"{path}/{sub}" for sub in fill_submodules(clone, target, sha)]
+    return missing

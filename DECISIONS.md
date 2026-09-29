@@ -549,3 +549,11 @@ Source: Fable audit 2, 9/29/26 (TSG-19). Changes entry 21.
 - **Choice.** The gate still lists with `--directory`, and walks each ignored folder for `.py` files, skipping folders that hold an environment or build output: one with a `pyvenv.cfg`, and names such as `.venv`, `venv`, `env`, `.tox`, `.nox`, `build`, `dist`, `node_modules`, `__pycache__`, `.eggs` and `*.egg-info`. A file in an ignored folder is copied when the folder that holds the ignored one exists in the worktree, and the missing folders are created. The files are watched like any copied file, so under entry 50 a test that passes at base in such a project is inconclusive when the base run imported them, because they were generated for head.
 - **Alternatives.** Drop `--directory` and let git list every ignored file, which descends into every virtualenv and `node_modules`.
 - **Why.** Before, such a project got no verdicts at all. A large ignored data folder is walked once per run, which costs a little time and nothing else.
+
+## 58. Submodules are filled from the checkout's clones
+Source: Fable audit 2, 9/29/26 (TSG-20).
+
+- **Context.** `git worktree add` checks out the superproject only, so a submodule's folder was empty in both runs. A test that reads data from a submodule failed at head and at base and came out BROKEN_AT_HEAD, although it passes in the checkout, and nothing said why.
+- **Choice.** After making each worktree, the gate reads the submodule commits recorded at that revision and extracts each one with `git archive` from the clone the checkout already has, recursing into nested submodules. When the checkout has no clone, or the clone lacks that commit, the report warns and names the submodule. The README tells workflows that use submodules to check out with `submodules: true`.
+- **Alternatives.** Run `git submodule update --init` in each worktree. That writes the submodule's URL into the repository's shared config and fetches over the network, which the gate otherwise never does.
+- **Why.** Extracting from the local clone gives each run the exact commit it records, touches no config, and needs no network. In a shallow action checkout the base's submodule commit may be missing, and then the warning explains the broken rows.

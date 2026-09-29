@@ -49,7 +49,7 @@ Supported runners are Linux and macOS, such as `ubuntu-latest` and `macos-latest
 
 On 9/28/26 the action ran as a step in a real GitHub workflow for the first time, in a small demo repository (adamisom/tsg-demo, private for now) on a pull request with one test of each kind. It gave the expected verdicts, 1 strong, 1 weak and 1 inconclusive, wrote the report to the job summary, and put one "Weak test" warning on the weak test's file. It has not yet run on a pull request from a fork. Its shell step is tested locally against a shallow clone of a merge commit (`tests/test_action.py`), and `examples/action-integration.yml` is a workflow, not yet run, that exercises the action with `uses: ./`.
 
-To install it, add a workflow like this one. Use the `pull_request` trigger only, run it on a Linux or macOS runner, and check out with `fetch-depth: 2`. Pin the action to a full commit sha, or to a release tag once one exists. There is no release tag yet.
+To install it, add a workflow like this one. Use the `pull_request` trigger only, run it on a Linux or macOS runner, and check out with `fetch-depth: 2`. If your tests or code use a git submodule, also set `submodules: true`: the gate fills each run's submodule folders from those clones, and the report warns when it can't, for example when the submodule commit the base uses was not fetched. Pin the action to a full commit sha, or to a release tag once one exists. There is no release tag yet.
 
 ```yaml
 on:

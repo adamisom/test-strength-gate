@@ -118,6 +118,10 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
     with tempfile.TemporaryDirectory(prefix="tsg-") as tmp, \
             gitutil.worktree(repo, head_sha, Path(tmp) / "head") as head_wt, \
             gitutil.worktree(repo, base_sha, Path(tmp) / "base") as base_wt:
+        missing = gitutil.fill_submodules(repo, head_wt, head_sha) + gitutil.fill_submodules(repo, base_wt, base_sha)
+        if missing:
+            result.warnings.append("Submodules the checkout has no clone or commit for, so they are empty in the "
+                                   "runs (check out with submodules: true): " + ", ".join(sorted(set(missing))))
         generated = gitutil.ignored_python_files(repo)
         copied = gitutil.copy_generated_files(repo, head_wt, generated)
         base_copied = gitutil.copy_generated_files(repo, base_wt, generated)
