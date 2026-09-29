@@ -154,6 +154,15 @@ def test_pick_judged():
     ("TypeError", "Foo.__init__() got an unexpected keyword argument 'c'", "missing_api"),
     ("TypeError", "<lambda>() takes 1 positional argument but 2 were given", "missing_api"),
     ("TypeError", "f() missing 1 required keyword-only argument: 'k'", "missing_api"),
+    # Fable audit 2, TSG-17: Django's and SQLAlchemy's wordings for a model
+    # field that doesn't exist yet. TSG-21: CPython's Argument Clinic wordings.
+    ("TypeError", "Author() got unexpected keyword arguments: 'nickname'", "missing_api"),
+    ("TypeError", "Author() got unexpected keyword argument: 'nickname'", "missing_api"),
+    ("TypeError", "'nickname' is an invalid keyword argument for Author", "missing_api"),
+    ("TypeError", "'strict' is an invalid keyword argument for int()", "missing_api"),
+    ("TypeError", "open() missing required argument 'file' (pos 1)", "missing_api"),
+    ("TypeError", "this function got an unexpected keyword argument 'nope'", "missing_api"),
+    ("TypeError", "the value 'x' is an invalid keyword argument for this form", "other_error"),
     ("TypeError", "unsupported operand type(s) for +: 'int' and 'str'", "other_error"),
     ("TypeError", "expected str, bytes or os.PathLike object, not NoneType", "other_error"),
     ("ValueError", "bad input", "other_error"),

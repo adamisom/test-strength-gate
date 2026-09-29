@@ -496,3 +496,26 @@ Source: Codex review, 9/28/26 (TSG-15), Adam's call on 9/29/26. Changes entry 49
 - **Choice.** When the base run imported a git-ignored `.py` file the gate copied from the checkout, a test that would be weak is inconclusive, and its reason names the file and says it was generated for head. The report's note at the top now appears when such a run has any test that passed at base, and says those tests are inconclusive rather than weak. The legend and the README's verdict table and limits say so too.
 - **Alternatives.** Keep the weak verdict with the caveat, as entry 49 did. Rebuild the project at base, which runs the project's build, and the tool never does that.
 - **Why.** A weak verdict asks a reviewer to act on the claim that the test passes without the source change, and here the gate can't back that claim. In the saved evaluation reports only plumbum #724 copied a file, and its one verdict is strong, so no published number changes.
+
+## 51. Django's, SQLAlchemy's and CPython's C wordings for a call that doesn't fit count as a new API
+Source: Fable audit 2, 9/29/26 (TSG-17 and TSG-21). Changes entry 48.
+
+- **Context.** Entry 48 anchored `ARGUMENT_MISMATCH` to the shapes Python writes itself. Libraries that build objects from keyword arguments write their own, equally fixed shapes. Django writes "Author() got unexpected keyword arguments: 'nickname'", which the substring pattern before entry 48 matched, so a test of a model field the PR adds became STRONG again. SQLAlchemy writes "'nickname' is an invalid keyword argument for Author", which never matched. CPython's Argument Clinic functions write "'strict' is an invalid keyword argument for int()" (3.10 to 3.12), "open() missing required argument 'file' (pos 1)" and, from 3.13, "this function got an unexpected keyword argument 'x'".
+- **Choice.** The pattern adds these five shapes, each anchored the way entry 48's are: the callable's name and `()` first, or a quoted identifier followed by "is an invalid keyword argument for" and a name, or the exact "this function got an unexpected keyword argument". An end-to-end test uses a hand-written class that raises Django's wording, so the suite needs no Django.
+- **Alternatives.** Go back to matching phrases anywhere, which reopens entry 48's false INCONCLUSIVE for a project's own message.
+- **Why.** A test that constructs a model with a field the PR adds is the plainest missing-API case, and goal 2 says it must not be strong. No saved evaluation report has a `TypeError`, so no evaluation verdict changes.
+
+## 52. A test without a call record did not pass
+Source: Fable audit 2, 9/29/26 (TSG-22). Adds to entry 38.
+
+- **Context.** `summarize` returned passed when no recorded phase failed or was skipped. A test body that calls `pytest.exit()` ends the session without a call report, so it had only a passed setup record and came out WEAK, although its body never finished.
+- **Choice.** Without a call record, the outcome is "collected but not run", so the verdict is INCONCLUSIVE with that reason, at base or at head.
+- **Alternatives.** None worth keeping. Every test that really passes has a call record.
+- **Why.** A pass the gate didn't see can't be a weak verdict. Every saved evaluation outcome that passed came from a call record, so no verdict changes.
+
+## 53. The "collected but not run" reasons are tested end to end
+Source: Fable audit 2, 9/29/26 (TSG-23). Adds to entry 38.
+
+- **Context.** The plugin's `items` list and the classifier's `collected` flag were each tested alone. With `--maxfail=0`, no end-to-end test reached either "Collected ... but not run" reason, so replacing `test_id in base_items` or `test_id in head_items` with `False` left the suite green.
+- **Choice.** Two end-to-end tests: `--sw` in `addopts` at base, and `pytest.exit()` at base and at head. Both mutations now fail them.
+- **Why.** The verdict was right either way, but the reason is what tells the reviewer why.

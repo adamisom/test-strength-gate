@@ -31,12 +31,21 @@ MISSING_API_ERRORS = {"ImportError", "ModuleNotFoundError", "NameError"}
 # (2 given)", or, for some C functions, "divmod expected 2 arguments, got 1".
 # The pattern is anchored to that shape, so a project's own TypeError whose
 # words only sound like one, e.g. "renderer takes at most 2 arguments for this
-# input", stays behavior (Codex TSG-16).
+# input", stays behavior (Codex TSG-16). A few other shapes are just as
+# fixed: Django's and SQLAlchemy's for a model field that doesn't exist yet,
+# "Author() got unexpected keyword arguments: 'nickname'" and "'nickname' is
+# an invalid keyword argument for Author", and CPython's Argument Clinic
+# wordings, "'strict' is an invalid keyword argument for int()", "open()
+# missing required argument 'file' (pos 1)" and "this function got an
+# unexpected keyword argument 'x'" (Fable audit 2, TSG-17 and TSG-21).
 _CALLABLE = r"[\w.<>]+"
 ARGUMENT_MISMATCH = re.compile(
     rf"^{_CALLABLE}\(\) (?:got an unexpected keyword argument|got multiple values for argument"
-    rf"|got some positional-only argument|takes |missing \d+ required)"
+    rf"|got some positional-only argument|takes |missing \d+ required|missing required argument "
+    rf"|got unexpected keyword arguments?:)"
     rf"|^{_CALLABLE} expected (?:(?:at most|at least|exactly) )?\d+ arguments?, got \d+"
+    rf"|^'\w+' is an invalid keyword argument for {_CALLABLE}"
+    rf"|^this function got an unexpected keyword argument"
 )
 
 
@@ -146,6 +155,10 @@ def summarize(phases, collect_error=None, startup_error=None, collected=False):
                            raised_at=rec.get("raised_at") or "", raised_inside=bool(rec.get("raised_inside")),
                            local_at=rec.get("local_at") or "", source_line=rec.get("source_line") or "",
                            stderr_hint=rec.get("stderr_hint") or "")
+    if "call" not in phases:
+        # Setup passed but the body never reported, e.g. it called
+        # pytest.exit(), which ends the session without a call record.
+        return Outcome("not_run", "collected", message="collected but not run")
     return Outcome("passed", "call")
 
 

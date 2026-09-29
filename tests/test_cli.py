@@ -326,6 +326,25 @@ def test_argument_type_error_inside_the_old_code_says_the_cause_is_unclear(repo)
     assert "usually means the new API" not in test.reason
 
 
+def test_a_model_field_that_is_new_at_head_is_inconclusive(repo):
+    # Fable audit 2, TSG-17. Django rejects an unknown field in its own words,
+    # "Author() got unexpected keyword arguments: 'nickname'", which the
+    # anchored pattern missed, so a test of a new field came out strong.
+    model = ("class Author:\n    fields = {fields}\n\n    def __init__(self, **kwargs):\n"
+             "        unexpected = [k for k in kwargs if k not in self.fields]\n"
+             "        if unexpected:\n"
+             "            raise TypeError(f\"{{type(self).__name__}}() got unexpected keyword arguments: \"\n"
+             "                            + ', '.join(repr(k) for k in unexpected))\n"
+             "        self.__dict__.update(kwargs)\n")
+    base = repo.commit({"models.py": model.format(fields="('name',)")})
+    head = repo.commit({"models.py": model.format(fields="('name', 'nickname')"),
+                        "tests/test_author.py": "from models import Author\n\ndef test_nickname():\n"
+                                                "    assert Author(name='a', nickname='b').nickname == 'b'\n"})
+    [test] = repo.gate(base, head).tests
+    assert test.base.message == "Author() got unexpected keyword arguments: 'nickname'"
+    assert test.verdict == INCONCLUSIVE
+
+
 def test_bare_assertion_reason_shows_the_line_and_the_stderr_error(repo):
     # Codex review finding 4, the robocop case in small: the check lives in a
     # helper pytest doesn't rewrite, so its AssertionError has no message, and
@@ -495,6 +514,37 @@ def test_x_in_addopts_does_not_stop_the_judged_runs(repo):
     result = repo.gate(base, head)
     assert [(t.id.split("::")[1], t.verdict) for t in result.tests] == [
         ("test_a_broken", BROKEN_AT_HEAD), ("test_b_half", STRONG), ("test_c_double", WEAK)]
+
+
+def test_stepwise_in_addopts_leaves_later_tests_collected_but_not_run(repo):
+    # Fable audit 2, TSG-23. --sw stops the base run at the first failure and
+    # --maxfail=0 doesn't override it. The later tests must get the reason
+    # for a test that was collected but not run, not "not collected".
+    sw = {"pytest.ini": "[pytest]\naddopts = --sw\n"}
+    base = repo.commit({**SRC_BASE, **sw})
+    head = repo.commit({**SRC_HEAD, "tests/test_lib.py": "import lib\n\ndef test_a_half():\n"
+                        "    assert lib.half(3) == 1.5\n\ndef test_b_double():\n    assert lib.double(3) == 6\n"})
+    result = repo.gate(base, head)
+    assert [t.verdict for t in result.tests] == [STRONG, INCONCLUSIVE]
+    assert result.tests[1].reason.startswith("Collected at base but not run")
+
+
+def test_a_test_that_calls_pytest_exit_is_not_a_pass(repo):
+    # Fable audit 2, TSG-22. pytest.exit() in a test body leaves a setup
+    # record and no call record, which summarize() took for a pass, so the
+    # test came out weak at base. At head, an exit leaves later tests
+    # collected but not run (TSG-23).
+    base = repo.commit(SRC_BASE)
+    head = repo.commit({**SRC_HEAD, "tests/test_lib.py": "import lib, pytest\n\ndef test_a_half():\n"
+                        "    if lib.half(3) != 1.5:\n        pytest.exit('half is wrong')\n\n"
+                        "def test_b_double():\n    assert lib.double(3) == 6\n"})
+    result = repo.gate(base, head)
+    assert [(t.verdict, t.reason.split(",")[0]) for t in result.tests] == [
+        (INCONCLUSIVE, "Collected at base but not run"), (INCONCLUSIVE, "Collected at base but not run")]
+    exits_at_head = repo.commit({"tests/test_lib.py": "import pytest\n\ndef test_a_half():\n"
+                                 "    pytest.exit('stop')\n\ndef test_b_double():\n    pass\n"})
+    result = repo.gate(head, exits_at_head)
+    assert [t.reason.split(",")[0] for t in result.tests] == ["Collected at head but not run"] * 2
 
 
 def _run_with_an_early_exit(tmp_path, *extra):
