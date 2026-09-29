@@ -573,3 +573,10 @@ Source: Fable audit 2, 9/29/26 (TSG-25). Adds to entries 37 and 41.
 - **Choice.** The README's limits now cover renamed test files and `--sw`, and the line on compiled extensions describes both cases.
 - **Alternatives.** For renames, drop `--no-renames` and judge a renamed file's tests by comparing each fingerprint with the old path's version. That is worth doing if moves turn up in real PRs, and it touches the selection code, which is why it waits.
 - **Why.** A reader who sees a column of weak verdicts after a file move, or a column of inconclusive ones after an extension change, should find the reason in the README.
+
+## 61. The explainer's figures wait for Adam's explainer pass
+Source: Fable audit 2, 9/29/26 (TSG-28).
+
+- **Context.** `docs/explainer.html` gives line counts (877 lines, a 285-line plugin) and a count of 110 tests from `75f4da1`. The sentence that names that commit frames them, so they are dated rather than false, but they no longer match the code.
+- **Choice.** Left unchanged for now. Explainer edits wait for Adam's word, and one is already waiting on a local branch. The figures go into that pass.
+- **Why.** Adam asked that explainer edits wait for him.
