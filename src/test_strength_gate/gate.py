@@ -35,6 +35,9 @@ class GateResult:
     deleted_files: list = field(default_factory=list)  # every file the PR deletes
     tests: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
+    # git-ignored .py files copied from the checkout into the base worktree
+    # that the base run imported; they were generated for head
+    copied_imported: list = field(default_factory=list)
 
     @property
     def pr_kind(self):
@@ -117,7 +120,8 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
             gitutil.worktree(repo, base_sha, Path(tmp) / "base") as base_wt:
         generated = gitutil.ignored_python_files(repo)
         copied = gitutil.copy_generated_files(repo, head_wt, generated)
-        copied += gitutil.copy_generated_files(repo, base_wt, generated)
+        base_copied = gitutil.copy_generated_files(repo, base_wt, generated)
+        copied += base_copied
         if copied:
             result.warnings.append("Copied git-ignored files from the checkout into the worktrees "
                                    "(usually generated at install time): " + ", ".join(sorted(set(copied))))
@@ -157,13 +161,14 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
         gitutil.remove_files(base_wt, deleted_test_files)
         gitutil.checkout_files(base_wt, head_sha, result.test_files)
         files = sorted({test_id.split("::")[0] for test_id in judged})
-        base_run = run(base_wt, files, select=list(judged))
+        base_run = run(base_wt, files, select=list(judged), watch=base_copied)
         head_run = run(head_wt, files, select=list(judged))
 
     if head_run["misrouted"]:
         result.warnings.append("The head run loaded project code from outside the head worktree: "
                                + _misrouted_message(head_run["misrouted"]))
     base_items, head_items = set(base_run["items"]), set(head_run["items"])
+    result.copied_imported = sorted(base_run.get("copied_imported") or [])
     for test_id, kind in judged.items():
         file = test_id.split("::")[0]
         if base_run["misrouted"]:
@@ -178,5 +183,9 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
         head_outcome = summarize(head_run["results"].get(test_id), head_run["collect_errors"].get(file),
                                  head_run.get("startup_error"), test_id in head_items)
         label, reason = verdict(base_outcome, head_outcome)
+        if label == WEAK and result.copied_imported:
+            reason += (f" The base run imported {', '.join(result.copied_imported)}, which the gate copied from "
+                       f"the checkout and which was generated for head, so check that the test doesn't depend "
+                       f"on a value in it.")
         result.tests.append(JudgedTest(test_id, kind, base_outcome, head_outcome, label, reason))
     return result

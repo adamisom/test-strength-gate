@@ -12,6 +12,7 @@ from test_strength_gate.classify import BROKEN_AT_HEAD, INCONCLUSIVE, STRONG, WE
 from test_strength_gate import gate, runner
 from test_strength_gate.cli import main
 from test_strength_gate.gate import run_gate
+from test_strength_gate.report import to_markdown
 
 SRC_BASE = {"lib.py": "def double(x):\n    return x + x\n\ndef half(x):\n    return x // 2\n"}
 SRC_HEAD = {"lib.py": "def double(x):\n    return 2 * x\n\ndef half(x):\n    return x / 2\n"}
@@ -177,6 +178,37 @@ def test_generated_version_file_is_copied_into_worktrees(repo):
     result = repo.gate(base, head)
     assert [t.verdict for t in result.tests] == [STRONG]
     assert any("mypkg/version.py" in w and ".venv" not in w for w in result.warnings)
+
+
+def test_weak_from_a_copied_generated_module_says_the_base_run_used_heads_copy(repo):
+    # Codex TSG-15: the checkout's ignored version.py was generated for head,
+    # and the gate copies it into the base worktree too. A test of the value
+    # it holds then passes at base. The verdict stays weak, but it must not be
+    # silent: the reason and a note at the top name the copied module.
+    base = repo.commit({".gitignore": "pkg/version.py\n", "pyproject.toml": "version = '1.0'\n",
+                        "pkg/__init__.py": "",
+                        "pkg/app.py": "from .version import VERSION\n\ndef current():\n    return VERSION\n"})
+    head = repo.commit({"pyproject.toml": "version = '2.0'\n",
+                        "tests/test_app.py": "from pkg.app import current\n\n"
+                                             "def test_version():\n    assert current() == '2.0'\n"})
+    repo.write({"pkg/version.py": "VERSION = '2.0'\n"})
+    result = repo.gate(base, head)
+    [test] = result.tests
+    assert test.verdict == WEAK
+    assert "pkg/version.py" in test.reason and "generated for head" in test.reason
+    assert result.copied_imported == ["pkg/version.py"]
+    assert "pkg/version.py" in to_markdown(result).split("| Test |")[0]
+
+
+def test_a_copied_module_the_base_run_never_imported_adds_no_caveat(repo):
+    base = repo.commit({".gitignore": "pkg/version.py\n", "pkg/__init__.py": "",
+                        "pkg/app.py": "def f():\n    return 1\n"})
+    head = repo.commit({"tests/test_app.py": "from pkg.app import f\n\ndef test_f():\n    assert f() == 1\n"})
+    repo.write({"pkg/version.py": "VERSION = '2.0'\n"})
+    result = repo.gate(base, head)
+    assert [t.verdict for t in result.tests] == [WEAK]
+    assert result.copied_imported == []
+    assert "generated for head" not in result.tests[0].reason
 
 
 def test_non_python_fixtures_are_copied_but_not_collected(repo):

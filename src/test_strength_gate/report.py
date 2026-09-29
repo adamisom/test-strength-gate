@@ -89,12 +89,21 @@ def _other_files_note(paths, deleted, limit=10):
             f"and still come out strong. If they are test data, add a --test-glob that matches them.")
 
 
+def _copied_imported_note(paths):
+    shown = ", ".join(f"`{p}`" for p in paths)
+    return (f"**Check weak verdicts against these files.** The base run imported {shown}, git-ignored "
+            f"and usually written at install time, which the gate copied from the checkout. They were "
+            f"generated for head, so a test that checks a value in them can pass at base and look weak.")
+
+
 def to_markdown(result):
     lines = ["## Test strength gate", "", summary_line(result.tests), ""]
     if result.tests and result.pr_kind in PR_KIND_NOTES:
         lines += [PR_KIND_NOTES[result.pr_kind], ""]
     if result.other_files and any(t.verdict == STRONG for t in result.tests):
         lines += [_other_files_note(result.other_files, set(result.deleted_files)), ""]
+    if result.copied_imported and any(t.verdict == WEAK for t in result.tests):
+        lines += [_copied_imported_note(result.copied_imported), ""]
     lines += [f"Base `{result.base[:10]}`, head `{result.head[:10]}`. Changed test files: "
               f"{len(result.test_files)}. Changed Python source files: {len(result.source_files)}.", ""]
     if result.tests:

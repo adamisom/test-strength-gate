@@ -10,10 +10,12 @@ PLUGIN_DIR = Path(__file__).parent / "plugin"
 
 
 def run_pytest(python, worktree, files, original_repo, extra_args=(), select=None, collect_only=False,
-               timeout=900):
+               timeout=900, watch=()):
     """Run pytest on `files` inside `worktree` and return the recorder's data.
 
     `select` is a list of test IDs to run; the plugin deselects the rest.
+    `watch` is a list of worktree-relative .py paths; the result's
+    'copied_imported' says which of them the run imported.
     Passing node IDs on the command line is not safe, because one ID that
     does not exist at base makes pytest abort the whole run.
 
@@ -38,6 +40,9 @@ def run_pytest(python, worktree, files, original_repo, extra_args=(), select=Non
                    # Stale .pyc files could otherwise outlive a source swap.
                    PYTHONDONTWRITEBYTECODE="1")
         env.pop("TSG_SELECT", None)
+        env.pop("TSG_WATCH", None)
+        if watch:
+            env["TSG_WATCH"] = json.dumps(sorted(watch))
         if select is not None:
             select_file = Path(tmp) / "select.json"
             select_file.write_text(json.dumps(sorted(select)))
@@ -53,7 +58,7 @@ def run_pytest(python, worktree, files, original_repo, extra_args=(), select=Non
         if collect_only:
             cmd.append("--collect-only")
         cmd += list(files)
-        empty = {"items": [], "collect_errors": {}, "results": {}, "misrouted": {}}
+        empty = {"items": [], "collect_errors": {}, "results": {}, "misrouted": {}, "copied_imported": []}
         try:
             proc = subprocess.run(cmd, cwd=worktree, env=env, capture_output=True, text=True,
                                   timeout=timeout)

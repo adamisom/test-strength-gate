@@ -9,8 +9,9 @@ Settings come from environment variables:
   TSG_ROOT           the worktree root; IDs are made relative to it
   TSG_SELECT         optional JSON list of IDs; every other test is deselected
   TSG_ORIGINAL_REPO  optional path of the real checkout, to spot imports from it
+  TSG_WATCH          optional JSON list of worktree-relative .py paths, to report which were imported
 
-The JSON has four keys:
+The JSON has five keys:
   items           IDs of collected (and selected) tests; one listed here but
                   missing from results was collected but not run
   collect_errors  {file: last error line} for files that failed to import
@@ -19,6 +20,7 @@ The JSON has four keys:
                                 stderr_hint, xfail}}}
   misrouted       {module: path} for project modules imported from outside the worktree,
                   found in this process and, under pytest-xdist, in each worker
+  copied_imported the TSG_WATCH paths that some imported module was loaded from
 """
 
 import json
@@ -32,7 +34,7 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(os.environ.get("TSG_ROOT", ".")).resolve()
-_data = {"items": [], "collect_errors": {}, "results": {}, "misrouted": {}}
+_data = {"items": [], "collect_errors": {}, "results": {}, "misrouted": {}, "copied_imported": []}
 _config = None
 
 
@@ -207,7 +209,8 @@ def pytest_runtest_makereport(item, call):
         "xfail": hasattr(report, "wasxfail"),
         # Under pytest-xdist the worker, not the main process, imports the
         # project, so only the worker can see where the modules came from.
-        **({"misrouted": _worker_misrouted()} if hasattr(item.config, "workerinput") else {}),
+        **({"misrouted": _worker_misrouted(), "copied_imported": _watched_imports()}
+           if hasattr(item.config, "workerinput") else {}),
     }))
 
 
@@ -217,6 +220,9 @@ def pytest_runtest_logreport(report):
         return
     for module, path in (info.get("misrouted") or {}).items():
         _data["misrouted"].setdefault(module, path)
+    for path in info.get("copied_imported") or ():
+        if path not in _data["copied_imported"]:
+            _data["copied_imported"].append(path)
     phases = _data["results"].setdefault(info["id"], {})
     phases[report.when] = {
         "outcome": report.outcome,
@@ -318,6 +324,26 @@ def _worker_misrouted():
     return dict(_worker_found)
 
 
+def _watched_imports():
+    """The TSG_WATCH paths that a module in sys.modules was loaded from.
+
+    The gate copies git-ignored .py files, such as a version.py written at
+    install time, from the checkout into the base worktree. They were
+    generated for head, so the gate needs to know whether the base run used
+    them.
+    """
+    watch = json.loads(os.environ.get("TSG_WATCH") or "[]")
+    if not watch:
+        return []
+    wanted = {(_ROOT / rel).resolve(): rel for rel in watch}
+    found = set()
+    for module in list(sys.modules.values()):
+        file = getattr(module, "__file__", None)
+        if file and Path(file).resolve() in wanted:
+            found.add(wanted[Path(file).resolve()])
+    return sorted(found)
+
+
 def pytest_sessionfinish(session):
     if hasattr(session.config, "workerinput"):  # an xdist worker; the main process writes
         return
@@ -325,4 +351,5 @@ def pytest_sessionfinish(session):
     # arrived with their reports and are already in _data["misrouted"].
     for module, path in _misrouted_imports().items():
         _data["misrouted"].setdefault(module, path)
+    _data["copied_imported"] = sorted(set(_data["copied_imported"]) | set(_watched_imports()))
     Path(os.environ["TSG_OUT"]).write_text(json.dumps(_data, indent=2))
