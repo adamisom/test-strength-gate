@@ -63,29 +63,48 @@ def _normalize(name):
 _metadata_read = set()
 
 
+def _distribution_name(path):
+    """The normalized name in a .dist-info or .egg-info folder name, or None.
+
+    The folder is {name}-{version}.dist-info, {name}.egg-info or
+    {name}-{version}[-pyX.Y].egg-info, with "-" in the name written as "_",
+    so the name is the part before the suffix, up to its first "-". This is
+    also how importlib.metadata finds a distribution by name.
+    """
+    if path.suffix not in (".dist-info", ".egg-info"):
+        return None
+    return _normalize(path.name[: -len(path.suffix)].split("-")[0])
+
+
 def pytest_sessionstart(session):
     """Record reads of the project's installed metadata from outside the worktree.
 
     The gate names the project's distributions in TSG_DISTS. The action
     installs the project at head, and importlib.metadata reads that install's
     .dist-info in the base run too, so version() and entry_points() give
-    head's values there. Reads before the session starts, such as pytest's
-    own scan for plugins, are not counted.
+    head's values there. The importlib_metadata backport is watched the same
+    way when it is installed. Reads before the session starts, such as
+    pytest's own scan for plugins, are not counted.
     """
     names = {_normalize(n) for n in json.loads(os.environ.get("TSG_DISTS") or "[]")}
     if not names:
         return
-    import importlib.metadata as metadata
-    read_text = metadata.PathDistribution.read_text
+    import importlib
+    for module_name in ("importlib.metadata", "importlib_metadata"):
+        try:
+            metadata = importlib.import_module(module_name)
+        except ImportError:
+            continue
+        read_text = metadata.PathDistribution.read_text
 
-    def recording_read_text(self, filename):
-        path = Path(getattr(self, "_path", "") or "")
-        if path.suffix in (".dist-info", ".egg-info") and _normalize(path.name.split("-")[0]) in names:
-            if not path.resolve().is_relative_to(_ROOT):
-                _metadata_read.add(_normalize(path.name.split("-")[0]))
-        return read_text(self, filename)
+        def recording_read_text(self, filename, read_text=read_text):
+            path = Path(getattr(self, "_path", "") or "")
+            name = _distribution_name(path)
+            if name in names and not path.resolve().is_relative_to(_ROOT):
+                _metadata_read.add(name)
+            return read_text(self, filename)
 
-    metadata.PathDistribution.read_text = recording_read_text
+        metadata.PathDistribution.read_text = recording_read_text
 
 
 def pytest_configure(config):

@@ -271,12 +271,53 @@ def test_a_copied_module_the_base_run_never_imported_adds_no_caveat(repo):
     assert "generated for head" not in result.tests[0].reason
 
 
-def _fake_head_install(tmp_path, monkeypatch):
+def _fake_head_install(tmp_path, monkeypatch, folder="metapkg-2.0.dist-info", name="metapkg"):
     # A site folder with head's .dist-info stands in for the action's install.
-    site = tmp_path / "site"
-    (site / "metapkg-2.0.dist-info").mkdir(parents=True)
-    (site / "metapkg-2.0.dist-info" / "METADATA").write_text("Metadata-Version: 2.1\nName: metapkg\nVersion: 2.0\n")
-    monkeypatch.setenv("PYTHONPATH", str(site))
+    info = tmp_path / "site" / folder
+    info.mkdir(parents=True)
+    text = f"Metadata-Version: 2.1\nName: {name}\nVersion: 2.0\n"
+    (info / ("METADATA" if folder.endswith(".dist-info") else "PKG-INFO")).write_text(text)
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "site"))
+
+
+def _version_pr(repo, name="metapkg", reader="importlib.metadata", pyproject="pyproject.toml"):
+    """A PR that bumps the version in `pyproject` and tests the installed version."""
+    base = repo.commit({pyproject: f"[project]\nname = '{name}'\nversion = '1.0'\n",
+                        "metapkg/__init__.py": f"from {reader} import version\n\n"
+                                               f"__version__ = version('{name}')\n"})
+    head = repo.commit({pyproject: f"[project]\nname = '{name}'\nversion = '2.0'\n",
+                        "tests/test_version.py": "import metapkg\n\ndef test_version():\n"
+                                                 "    assert metapkg.__version__ == '2.0'\n"})
+    return repo.gate(base, head)
+
+
+@pytest.mark.parametrize("folder, name", [
+    ("my_project-2.0.dist-info", "my-project"),  # what pip and uv write (Codex TSG-29, rejected)
+    ("my_project.egg-info", "my-project"),       # setuptools' egg_info, with no version (TSG-30)
+    ("My_Project.egg-info", "My-Project"),
+])
+def test_metadata_reads_are_seen_for_every_folder_name(repo, tmp_path, monkeypatch, folder, name):
+    _fake_head_install(tmp_path, monkeypatch, folder, name)
+    result = _version_pr(repo, name)
+    assert result.metadata_read == [name.lower()]
+    assert [t.verdict for t in result.tests] == [INCONCLUSIVE]
+
+
+def test_a_changed_pyproject_below_the_root_names_its_distribution(repo, tmp_path, monkeypatch):
+    # TSG-31: in a monorepo the changed pyproject.toml isn't at the root.
+    _fake_head_install(tmp_path, monkeypatch)
+    result = _version_pr(repo, pyproject="packages/metapkg/pyproject.toml")
+    assert result.metadata_read == ["metapkg"]
+    assert [t.verdict for t in result.tests] == [INCONCLUSIVE]
+
+
+@pytest.mark.skipif(importlib.util.find_spec("importlib_metadata") is None, reason="needs importlib_metadata")
+def test_a_metadata_read_through_the_backport_is_seen(repo, tmp_path, monkeypatch):
+    # TSG-32: the importlib_metadata backport has its own PathDistribution.
+    _fake_head_install(tmp_path, monkeypatch)
+    result = _version_pr(repo, reader="importlib_metadata")
+    assert result.metadata_read == ["metapkg"]
+    assert [t.verdict for t in result.tests] == [INCONCLUSIVE]
 
 
 def test_a_pass_at_base_that_read_heads_installed_metadata_is_inconclusive(repo, tmp_path, monkeypatch):

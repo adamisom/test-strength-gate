@@ -76,20 +76,28 @@ def _set_origin(outcome, globs):
 PACKAGING_FILES = {"pyproject.toml", "setup.py", "setup.cfg"}
 
 
-def _distribution_names(repo, rev):
-    """The project's distribution names, from the root packaging files at `rev`."""
+def _distribution_names(repo, rev, packaging_files=()):
+    """The project's distribution names, from the packaging files at `rev`.
+
+    It reads the ones at the root and in each folder that holds a changed
+    packaging file, such as a package's own pyproject.toml in a monorepo.
+    """
     names = set()
-    for path, sections, pattern in (("pyproject.toml", ("project", "tool.poetry"), r"name\s*=\s*[\"']([^\"']+)[\"']"),
-                                    ("setup.cfg", ("metadata",), r"name\s*=\s*(\S+)")):
-        section = None
-        for line in (gitutil.show(repo, rev, path) or "").splitlines():
-            header = re.match(r"\s*\[([^\]]+)\]", line)
-            if header:
-                section = header.group(1).strip()
-            elif section in sections and (m := re.match(rf"\s*{pattern}", line)):
-                names.add(m.group(1))
-    setup = gitutil.show(repo, rev, "setup.py") or ""
-    names.update(re.findall(r"\bname\s*=\s*[\"']([^\"']+)[\"']", setup))
+    folders = {""} | {str(PurePosixPath(p).parent) for p in packaging_files}
+    for folder in sorted(folders):
+        def at(name):
+            return gitutil.show(repo, rev, str(PurePosixPath(folder) / name) if folder not in ("", ".") else name)
+        for path, sections, pattern in (("pyproject.toml", ("project", "tool.poetry"),
+                                         r"name\s*=\s*[\"']([^\"']+)[\"']"),
+                                        ("setup.cfg", ("metadata",), r"name\s*=\s*(\S+)")):
+            section = None
+            for line in (at(path) or "").splitlines():
+                header = re.match(r"\s*\[([^\]]+)\]", line)
+                if header:
+                    section = header.group(1).strip()
+                elif section in sections and (m := re.match(rf"\s*{pattern}", line)):
+                    names.add(m.group(1))
+        names.update(re.findall(r"\bname\s*=\s*[\"']([^\"']+)[\"']", at("setup.py") or ""))
     return sorted(names)
 
 
@@ -196,7 +204,7 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
         gitutil.remove_files(base_wt, deleted_test_files)
         gitutil.checkout_files(base_wt, head_sha, result.test_files)
         files = sorted({test_id.split("::")[0] for test_id in judged})
-        dists = _distribution_names(repo, head_sha) if result.packaging_files else []
+        dists = _distribution_names(repo, head_sha, result.packaging_files) if result.packaging_files else []
         base_run = run(base_wt, files, select=list(judged), watch=base_copied, dists=dists)
         head_run = run(head_wt, files, select=list(judged))
 
