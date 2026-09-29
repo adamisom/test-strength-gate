@@ -565,3 +565,11 @@ Source: Fable audit 2, 9/29/26 (TSG-18). Adds to entry 49.
 - **Choice.** When the PR changes `pyproject.toml`, `setup.py` or `setup.cfg` at any depth, each weak verdict's reason says the base run reads installed metadata from head's install, and the report adds a note at the top. The JSON lists the files as `packaging_files`. No verdict changes. The README's limit on installed packages says so.
 - **Alternatives.** Make such a weak verdict inconclusive, as entry 50 does for copied files. That is a verdict-rule change and waits for Adam. Have the plugin find the project's distributions outside the worktree and report them, which is more exact but the action always installs the project, so it would almost always fire anyway. Build and install the base version, which runs the project's build.
 - **Why.** The wrong weak was silent. Most PRs that change packaging files also change what the metadata says, so the caveat is worth its noise. No saved evaluation PR changes a packaging file, so no evaluation reason changes.
+
+## 60. Three limits move into the README
+Source: Fable audit 2, 9/29/26 (TSG-25). Adds to entries 37 and 41.
+
+- **Context.** Three behaviors that change results were written down only here or in a code comment. `--sw` in `addopts` still stops the base run at the first failure (entry 41). `git diff --no-renames` makes every test in a renamed test file new, so a pure move gives all weak. And the README said a PR whose change is in a compiled extension gets weak verdicts that mean nothing, which holds for a top-level extension with a regular install, while an extension inside a package installed editable makes the misrouting check fire, so every test is inconclusive.
+- **Choice.** The README's limits now cover renamed test files and `--sw`, and the line on compiled extensions describes both cases.
+- **Alternatives.** For renames, drop `--no-renames` and judge a renamed file's tests by comparing each fingerprint with the old path's version. That is worth doing if moves turn up in real PRs, and it touches the selection code, which is why it waits.
+- **Why.** A reader who sees a column of weak verdicts after a file move, or a column of inconclusive ones after an extension change, should find the reason in the README.
