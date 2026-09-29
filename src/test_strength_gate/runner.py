@@ -60,8 +60,10 @@ def run_pytest(python, worktree, files, original_repo, extra_args=(), select=Non
         cmd += list(files)
         empty = {"items": [], "collect_errors": {}, "results": {}, "misrouted": {}, "copied_imported": []}
         try:
+            # A conftest or plugin can write bytes that aren't UTF-8 past
+            # pytest's capture; they only matter for the startup error text.
             proc = subprocess.run(cmd, cwd=worktree, env=env, capture_output=True, text=True,
-                                  timeout=timeout)
+                                  encoding="utf-8", errors="replace", timeout=timeout)
         except subprocess.TimeoutExpired:
             return {**empty, "startup_error": f"pytest timed out after {timeout} seconds"}
 

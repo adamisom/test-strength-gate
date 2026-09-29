@@ -519,3 +519,10 @@ Source: Fable audit 2, 9/29/26 (TSG-23). Adds to entry 38.
 - **Context.** The plugin's `items` list and the classifier's `collected` flag were each tested alone. With `--maxfail=0`, no end-to-end test reached either "Collected ... but not run" reason, so replacing `test_id in base_items` or `test_id in head_items` with `False` left the suite green.
 - **Choice.** Two end-to-end tests: `--sw` in `addopts` at base, and `pytest.exit()` at base and at head. Both mutations now fail them.
 - **Why.** The verdict was right either way, but the reason is what tells the reviewer why.
+
+## 54. pytest's output is decoded with replacement
+Source: Fable audit 2, 9/29/26 (TSG-27). Adds to entry 39.
+
+- **Context.** The runner decoded pytest's stdout and stderr strictly. pytest replaces bad bytes in captured test output, but a conftest or plugin that writes to a file descriptor directly bypasses that. One such byte raised `UnicodeDecodeError`, and the CLI reported it as git output it couldn't read, with no report.
+- **Choice.** The runner decodes pytest's output as UTF-8 with replacement. The CLI's message for a decoding error no longer names git as the source.
+- **Why.** The gate reads its results from the plugin's JSON, and uses pytest's text only for the reason when a run fails as a whole, so a replaced byte costs nothing.

@@ -632,6 +632,16 @@ def test_runs_write_no_cache_into_the_worktree(tmp_path):
     assert not (tmp_path / ".pytest_cache").exists()
 
 
+def test_bytes_that_are_not_utf8_on_pytests_stderr_do_not_stop_the_gate(tmp_path):
+    # Fable audit 2, TSG-27. A conftest wrote raw bytes past pytest's capture,
+    # and decoding them strictly ended the gate with a message about git.
+    (tmp_path / "conftest.py").write_text("import os\n\ndef pytest_sessionfinish():\n"
+                                          "    os.write(2, b'\\xff\\xfe done\\n')\n")
+    (tmp_path / "test_x.py").write_text("def test_a():\n    assert 0\n")
+    data = runner.run_pytest(sys.executable, tmp_path, ["test_x.py"], tmp_path)
+    assert data["results"]["test_x.py::test_a"]["call"]["outcome"] == "failed"
+
+
 def test_a_usage_error_gives_pytests_error_line_not_the_rootdir_line(tmp_path):
     # Fable audit TSG-10. pytest prints its usage error, then inifile: and
     # rootdir: lines, and the reason used to be the rootdir line.
