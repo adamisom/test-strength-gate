@@ -488,3 +488,11 @@ Source: Codex review, 9/28/26 (TSG-15). Adds to entry 21.
 - **Choice.** The gate passes the files it copied into the base worktree to the plugin, which reports the ones some imported module was loaded from, in every pytest-xdist worker too. When the base run imported one, each weak verdict's reason names it and says it was generated for head, and the report adds a note at the top. The JSON has them as `copied_imported`. No verdict changes.
 - **Alternatives.** Make such a weak verdict inconclusive. In the saved evaluation reports only plumbum #724 copied a file, and its one verdict is strong, so that would change no published number, but it is a change to the verdict rules and waits for Adam. Rebuilding the project at base would be correct, but it runs the project's build, which the tool never does.
 - **Why.** The wrong weak was silent, and now it isn't. A weak verdict is already a prompt for a reviewer, and the caveat tells them what to check.
+
+## 50. A pass at base that imported a copied generated file is inconclusive
+Source: Codex review, 9/28/26 (TSG-15), Adam's call on 9/29/26. Changes entry 49.
+
+- **Context.** Entry 49 kept such a test weak and added a caveat to its reason, and left the stricter option for Adam. The copied file was generated for head, so a pass at base can come from head's values in it, and then it says nothing about the base code.
+- **Choice.** When the base run imported a git-ignored `.py` file the gate copied from the checkout, a test that would be weak is inconclusive, and its reason names the file and says it was generated for head. The report's note at the top now appears when such a run has any test that passed at base, and says those tests are inconclusive rather than weak. The legend and the README's verdict table and limits say so too.
+- **Alternatives.** Keep the weak verdict with the caveat, as entry 49 did. Rebuild the project at base, which runs the project's build, and the tool never does that.
+- **Why.** A weak verdict asks a reviewer to act on the claim that the test passes without the source change, and here the gate can't back that claim. In the saved evaluation reports only plumbum #724 copied a file, and its one verdict is strong, so no published number changes.

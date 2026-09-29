@@ -180,11 +180,12 @@ def test_generated_version_file_is_copied_into_worktrees(repo):
     assert any("mypkg/version.py" in w and ".venv" not in w for w in result.warnings)
 
 
-def test_weak_from_a_copied_generated_module_says_the_base_run_used_heads_copy(repo):
+def test_a_pass_at_base_that_imported_a_copied_generated_module_is_inconclusive(repo):
     # Codex TSG-15: the checkout's ignored version.py was generated for head,
     # and the gate copies it into the base worktree too. A test of the value
-    # it holds then passes at base. The verdict stays weak, but it must not be
-    # silent: the reason and a note at the top name the copied module.
+    # it holds then passes at base, which says nothing about the base code,
+    # so the verdict is inconclusive, and the reason and a note at the top
+    # name the copied module (DECISIONS 50).
     base = repo.commit({".gitignore": "pkg/version.py\n", "pyproject.toml": "version = '1.0'\n",
                         "pkg/__init__.py": "",
                         "pkg/app.py": "from .version import VERSION\n\ndef current():\n    return VERSION\n"})
@@ -194,7 +195,8 @@ def test_weak_from_a_copied_generated_module_says_the_base_run_used_heads_copy(r
     repo.write({"pkg/version.py": "VERSION = '2.0'\n"})
     result = repo.gate(base, head)
     [test] = result.tests
-    assert test.verdict == WEAK
+    assert test.base.status == "passed"
+    assert test.verdict == INCONCLUSIVE
     assert "pkg/version.py" in test.reason and "generated for head" in test.reason
     assert result.copied_imported == ["pkg/version.py"]
     assert "pkg/version.py" in to_markdown(result).split("| Test |")[0]

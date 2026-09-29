@@ -57,7 +57,7 @@ Each judged test was run twice, once on the base commit with only the PR's test-
 
 - **STRONG**: fails at base, so it would catch the source change going missing. A failed check is firm evidence. Another exception counts only if the old code caused it, so its reason says where it was raised and asks you to inspect the cause.
 - **WEAK**: passes at base. This is a prompt for a reviewer, not a failure. It is expected for refactors and for tests that pin down existing behavior, but for a bug fix or feature it can mean the test doesn't exercise the change.
-- **INCONCLUSIVE**: fails at base because the code it calls doesn't exist yet (import, attribute or signature errors), because it reads a file that exists at head but not in the base run, or because setup failed. It shows the API or input is new, not that the behavior is checked. It is also used when a pytest run fails as a whole (a timeout or an internal error), or when a test was not collected or not run at base or at head, since the result is then unknown.
+- **INCONCLUSIVE**: fails at base because the code it calls doesn't exist yet (import, attribute or signature errors), because it reads a file that exists at head but not in the base run, or because setup failed. It shows the API or input is new, not that the behavior is checked. It is also used when a pytest run fails as a whole (a timeout or an internal error), or when a test was not collected or not run at base or at head, since the result is then unknown. A test that passes at base is inconclusive too when the base run imported a git-ignored file the gate copied from the checkout, since that file was generated for head.
 - **BROKEN_AT_HEAD**: does not pass at head, so nothing else about it can be judged.
 - **SKIPPED**: skipped, so not judged."""
 
@@ -91,9 +91,10 @@ def _other_files_note(paths, deleted, limit=10):
 
 def _copied_imported_note(paths):
     shown = ", ".join(f"`{p}`" for p in paths)
-    return (f"**Check weak verdicts against these files.** The base run imported {shown}, git-ignored "
-            f"and usually written at install time, which the gate copied from the checkout. They were "
-            f"generated for head, so a test that checks a value in them can pass at base and look weak.")
+    return (f"**The base run imported files generated for head.** It imported {shown}, git-ignored "
+            f"and usually written at install time, which the gate copied from the checkout. A test that "
+            f"checks a value in them can pass at base for that reason, so tests that pass at base are "
+            f"inconclusive here rather than weak.")
 
 
 def to_markdown(result):
@@ -102,7 +103,7 @@ def to_markdown(result):
         lines += [PR_KIND_NOTES[result.pr_kind], ""]
     if result.other_files and any(t.verdict == STRONG for t in result.tests):
         lines += [_other_files_note(result.other_files, set(result.deleted_files)), ""]
-    if result.copied_imported and any(t.verdict == WEAK for t in result.tests):
+    if result.copied_imported and any(t.base.status == "passed" for t in result.tests):
         lines += [_copied_imported_note(result.copied_imported), ""]
     lines += [f"Base `{result.base[:10]}`, head `{result.head[:10]}`. Changed test files: "
               f"{len(result.test_files)}. Changed Python source files: {len(result.source_files)}.", ""]
