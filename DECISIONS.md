@@ -506,7 +506,7 @@ Source: Fable audit 2, 9/29/26 (TSG-17 and TSG-21). Changes entry 48.
 - **Why.** A test that constructs a model with a field the PR adds is the plainest missing-API case, and goal 2 says it must not be strong. No saved evaluation report has a `TypeError`, so no evaluation verdict changes.
 
 ## 52. A test without a call record did not pass
-Source: Fable audit 2, 9/29/26 (TSG-22). Adds to entry 38.
+Source: Fable audit 2, 9/29/26 (TSG-22). Adds to entry 37.
 
 - **Context.** `summarize` returned passed when no recorded phase failed or was skipped. A test body that calls `pytest.exit()` ends the session without a call report, so it had only a passed setup record and came out WEAK, although its body never finished.
 - **Choice.** Without a call record, the outcome is "collected but not run", so the verdict is INCONCLUSIVE with that reason, at base or at head.
@@ -514,7 +514,7 @@ Source: Fable audit 2, 9/29/26 (TSG-22). Adds to entry 38.
 - **Why.** A pass the gate didn't see can't be a weak verdict. Every saved evaluation outcome that passed came from a call record, so no verdict changes.
 
 ## 53. The "collected but not run" reasons are tested end to end
-Source: Fable audit 2, 9/29/26 (TSG-23). Adds to entry 38.
+Source: Fable audit 2, 9/29/26 (TSG-23). Adds to entry 37.
 
 - **Context.** The plugin's `items` list and the classifier's `collected` flag were each tested alone. With `--maxfail=0`, no end-to-end test reached either "Collected ... but not run" reason, so replacing `test_id in base_items` or `test_id in head_items` with `False` left the suite green.
 - **Choice.** Two end-to-end tests: `--sw` in `addopts` at base, and `pytest.exit()` at base and at head. Both mutations now fail them.
@@ -539,5 +539,5 @@ Source: Fable audit 2, 9/29/26 (TSG-24). Adds to entries 49 and 50.
 Source: Fable audit 2, 9/29/26 (TSG-26). Adds to entry 49.
 
 - **Context.** Under pytest-xdist the check runs after every test phase, and it resolved the path of every module in `sys.modules` each time. With 300 tests and a copied file, the gate took three times as long.
-- **Choice.** It keeps the modules it has seen, as the per-worker misrouting check does (entry 40), resolves each copied path once, and looks only at new modules.
+- **Choice.** It keeps the modules it has seen, as the per-worker misrouting check does (entry 36), resolves each copied path once, and looks only at new modules.
 - **Why.** It can't change a verdict, and the fix is small.
