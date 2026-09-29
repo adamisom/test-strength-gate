@@ -3,8 +3,10 @@
 import functools
 import importlib.util
 import json
+import os
 import subprocess
 import sys
+import zipfile
 
 import pytest
 
@@ -260,6 +262,45 @@ def test_a_copied_file_read_by_exec_in_its_package_counts_as_imported(repo):
     assert [t.verdict for t in result.tests] == [INCONCLUSIVE]
 
 
+def test_a_module_that_only_mentions_the_copied_files_stem_does_not_count(repo):
+    # Fable audit 3, TSG-37. The sibling rule matched "version" as a word, so a
+    # cli.py with a --version option counted as reading the copied version.py.
+    base = repo.commit({".gitignore": "pkg/version.py\n", "pkg/__init__.py": "",
+                        "pkg/cli.py": "OPTIONS = ['--version']\n\ndef f():\n    return 1\n"})
+    head = repo.commit({"tests/test_cli.py": "from pkg.cli import f\n\ndef test_f():\n    assert f() == 1\n"})
+    repo.write({"pkg/version.py": "VERSION = '2.0'\n"})
+    result = repo.gate(base, head)
+    assert result.copied_imported == []
+    assert [t.verdict for t in result.tests] == [WEAK]
+
+
+@needs_xdist
+def test_a_copied_module_imported_in_an_xdist_worker_is_seen(repo):
+    # Fable audit 3, TSG-42: the copied-file rule had no xdist test.
+    base = repo.commit({".gitignore": "pkg/version.py\n", "pytest.ini": "[pytest]\naddopts = -n 2\n",
+                        "pkg/__init__.py": "",
+                        "pkg/app.py": "from .version import VERSION\n\ndef current():\n    return VERSION\n"})
+    head = repo.commit({"tests/test_app.py": "from pkg.app import current\n\n"
+                                             "def test_version():\n    assert current() == '2.0'\n"})
+    repo.write({"pkg/version.py": "VERSION = '2.0'\n"})
+    result = repo.gate(base, head)
+    assert result.copied_imported == ["pkg/version.py"]
+    assert [t.verdict for t in result.tests] == [INCONCLUSIVE]
+
+
+def test_a_broken_ignored_symlink_and_a_conda_env_are_not_copied(repo):
+    # Fable audit 3, TSG-38 and TSG-39. A git-ignored .py symlink with no
+    # target crashed the copy, and a conda env, which has no pyvenv.cfg, had
+    # its whole standard library copied.
+    base = repo.commit({**SRC_BASE, ".gitignore": "gone.py\nenvs/\n"})
+    head = repo.commit({**SRC_HEAD, **STRONG_TEST})
+    (repo.path / "gone.py").symlink_to(repo.path / "missing.py")
+    repo.write({"envs/py/conda-meta/history": "", "envs/py/lib/python3.12/os.py": "x = 1\n"})
+    result = repo.gate(base, head)
+    assert [t.verdict for t in result.tests] == [STRONG]
+    assert not any("Copied git-ignored" in w for w in result.warnings)
+
+
 def test_a_copied_module_the_base_run_never_imported_adds_no_caveat(repo):
     base = repo.commit({".gitignore": "pkg/version.py\n", "pkg/__init__.py": "",
                         "pkg/app.py": "def f():\n    return 1\n"})
@@ -280,11 +321,11 @@ def _fake_head_install(tmp_path, monkeypatch, folder="metapkg-2.0.dist-info", na
     monkeypatch.setenv("PYTHONPATH", str(tmp_path / "site"))
 
 
-def _version_pr(repo, name="metapkg", reader="importlib.metadata", pyproject="pyproject.toml"):
+def _version_pr(repo, name="metapkg", reader="importlib.metadata", pyproject="pyproject.toml", extra=None):
     """A PR that bumps the version in `pyproject` and tests the installed version."""
     base = repo.commit({pyproject: f"[project]\nname = '{name}'\nversion = '1.0'\n",
                         "metapkg/__init__.py": f"from {reader} import version\n\n"
-                                               f"__version__ = version('{name}')\n"})
+                                               f"__version__ = version('{name}')\n", **(extra or {})})
     head = repo.commit({pyproject: f"[project]\nname = '{name}'\nversion = '2.0'\n",
                         "tests/test_version.py": "import metapkg\n\ndef test_version():\n"
                                                  "    assert metapkg.__version__ == '2.0'\n"})
@@ -295,12 +336,90 @@ def _version_pr(repo, name="metapkg", reader="importlib.metadata", pyproject="py
     ("my_project-2.0.dist-info", "my-project"),  # what pip and uv write (Codex TSG-29, rejected)
     ("my_project.egg-info", "my-project"),       # setuptools' egg_info, with no version (TSG-30)
     ("My_Project.egg-info", "My-Project"),
+    ("foo_bar-2.0.dist-info", "foo.bar"),        # dots normalize too (Fable audit 3, TSG-42)
 ])
 def test_metadata_reads_are_seen_for_every_folder_name(repo, tmp_path, monkeypatch, folder, name):
     _fake_head_install(tmp_path, monkeypatch, folder, name)
     result = _version_pr(repo, name)
-    assert result.metadata_read == [name.lower()]
+    assert result.metadata_read == [name.lower().replace(".", "-")]
     assert [t.verdict for t in result.tests] == [INCONCLUSIVE]
+
+
+def test_a_metadata_read_while_pytest_imports_a_conftest_is_seen(repo, tmp_path, monkeypatch):
+    # Fable audit 3, TSG-35. The wrapper went in at session start, after
+    # pytest imported tests/conftest.py, whose import of the package read the
+    # version, so the read was missed and the test stayed weak.
+    _fake_head_install(tmp_path, monkeypatch)
+    result = _version_pr(repo, extra={"tests/conftest.py": "import metapkg\n"})
+    assert result.metadata_read == ["metapkg"]
+    assert [t.verdict for t in result.tests] == [INCONCLUSIVE]
+
+
+def test_pytests_own_reads_of_a_plugin_projects_metadata_do_not_count(repo, tmp_path, monkeypatch):
+    # Fable audit 3, TSG-36. The project is a pytest plugin, and with -v
+    # pytest's session header reads its metadata to list it. No test reads
+    # the metadata, so the verdict stays weak.
+    _fake_head_install(tmp_path, monkeypatch)
+    info = tmp_path / "site" / "metapkg-2.0.dist-info"
+    (info / "entry_points.txt").write_text("[pytest11]\nmetapkg = metapkg.plugin\n")
+    base = repo.commit({"pytest.ini": "[pytest]\naddopts = -v\n",
+                        "pyproject.toml": "[project]\nname = 'metapkg'\ndependencies = []\n",
+                        "metapkg/__init__.py": "",
+                        "metapkg/plugin.py": "import pytest\n\n@pytest.fixture\ndef answer():\n    return 42\n"})
+    head = repo.commit({"pyproject.toml": "[project]\nname = 'metapkg'\ndependencies = ['attrs']\n",
+                        "tests/test_answer.py": "def test_answer(answer):\n    assert answer == 42\n"})
+    result = repo.gate(base, head)
+    assert result.metadata_read == []
+    assert [t.verdict for t in result.tests] == [WEAK]
+
+
+def test_a_zipped_distribution_on_the_path_does_not_break_the_base_run(repo, tmp_path, monkeypatch):
+    # Fable audit 3, TSG-34. importlib.metadata gives a distribution inside a
+    # zip a zipfile.Path, which the wrapper couldn't turn into a Path, so
+    # entry_points() raised a TypeError at base only and the test was strong.
+    _fake_head_install(tmp_path, monkeypatch)
+    (tmp_path / "site" / "metapkg-2.0.dist-info" / "entry_points.txt").write_text(
+        "[metaplugins]\nnew = metapkg:f\n")
+    bundle = tmp_path / "bundle.zip"
+    with zipfile.ZipFile(bundle, "w") as z:
+        z.writestr("zdist-1.0.dist-info/METADATA", "Metadata-Version: 2.1\nName: zdist\nVersion: 1.0\n")
+        z.writestr("zdist-1.0.dist-info/entry_points.txt", "[other]\nx = y:z\n")
+    monkeypatch.setenv("PYTHONPATH", f"{tmp_path / 'site'}{os.pathsep}{bundle}")
+    base = repo.commit({"pyproject.toml": "[project]\nname = 'metapkg'\n",
+                        "metapkg/__init__.py": "from importlib.metadata import entry_points\n\n"
+                                               "def f():\n    pass\n\n"
+                                               "def plugins():\n    return sorted(e.name for e in "
+                                               "entry_points(group='metaplugins'))\n"})
+    head = repo.commit({"pyproject.toml": "[project]\nname = 'metapkg'\n\n"
+                                          "[project.entry-points.metaplugins]\nnew = 'metapkg:f'\n",
+                        "tests/test_plugins.py": "import metapkg\n\ndef test_plugins():\n"
+                                                 "    assert metapkg.plugins() == ['new']\n"})
+    result = repo.gate(base, head)
+    [test] = result.tests
+    assert test.base.status == "passed"
+    assert (test.verdict, result.metadata_read) == (INCONCLUSIVE, ["metapkg"])
+
+
+def test_a_pyproject_that_is_test_data_is_not_a_packaging_change(repo):
+    # Fable audit 3, TSG-40.
+    base = repo.commit(SRC_BASE)
+    head = repo.commit({**WEAK_TEST, "tests/fixtures/pyproject.toml": "[project]\nname = 'sample'\n"})
+    result = repo.gate(base, head)
+    assert result.packaging_files == []
+    assert "installed metadata" not in result.tests[0].reason
+
+
+@pytest.mark.parametrize("files, expected", [
+    ({"setup.py": "from setuptools import setup\n\nsetup(name='from-setup-py', version='1')\n"},
+     ["from-setup-py"]),
+    ({"setup.cfg": "[metadata]\nname = from-setup-cfg\n"}, ["from-setup-cfg"]),
+    ({"pyproject.toml": "[tool.poetry]\nname = \"from-poetry\"\n\n[tool.poetry.dependencies]\n"
+                        "name = \"not-this\"\n"}, ["from-poetry"]),
+])
+def test_distribution_names_come_from_each_packaging_file(repo, files, expected):
+    # Fable audit 3, TSG-42: no test read names from setup.py, setup.cfg or Poetry.
+    head = repo.commit(files)
+    assert gate._distribution_names(repo.path, head) == expected
 
 
 def test_a_changed_pyproject_below_the_root_names_its_distribution(repo, tmp_path, monkeypatch):

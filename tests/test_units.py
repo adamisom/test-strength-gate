@@ -340,3 +340,30 @@ def test_watched_imports_checks_each_module_once(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "resolve", lambda self, *a, **k: calls.append(self) or resolve(self, *a, **k))
     assert recorder._watched_imports() == []
     assert calls == []
+
+
+class _Dist:
+    def __init__(self, path):
+        self._path = path
+
+
+@pytest.mark.parametrize("path, recorded", [
+    ("{out}/metapkg-2.0.dist-info", True),
+    ("{out}/metapkg-2.0-py3.12.egg/EGG-INFO", True),   # Fable audit 3, TSG-41: an unzipped .egg
+    ("{root}/metapkg.egg-info", False),                  # TSG-42: inside the worktree it's base's own
+    ("{out}/other-2.0.dist-info", False),
+])
+def test_metadata_reads_are_recorded_by_distribution_and_place(tmp_path, monkeypatch, path, recorded):
+    recorder = _load_plugin()
+    monkeypatch.setattr(recorder, "_ROOT", (tmp_path / "root").resolve())
+    folder = Path(path.format(out=tmp_path / "site", root=tmp_path / "root"))
+    folder.mkdir(parents=True)
+    recorder._record_metadata_read(_Dist(folder), {"metapkg"})
+    assert recorder._metadata_read == ({"metapkg"} if recorded else set())
+
+
+def test_a_distribution_inside_a_zip_is_skipped_without_an_error():
+    # Fable audit 3, TSG-34: a zipfile.Path is not os.PathLike.
+    recorder = _load_plugin()
+    recorder._record_metadata_read(_Dist(object()), {"metapkg"})
+    assert recorder._metadata_read == set()

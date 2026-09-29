@@ -69,22 +69,48 @@ def _distribution_name(path):
     The folder is {name}-{version}.dist-info, {name}.egg-info or
     {name}-{version}[-pyX.Y].egg-info, with "-" in the name written as "_",
     so the name is the part before the suffix, up to its first "-". This is
-    also how importlib.metadata finds a distribution by name.
+    also how importlib.metadata finds a distribution by name. An unzipped
+    .egg keeps its metadata in EGG-INFO, and the name is then the .egg's.
     """
-    if path.suffix not in (".dist-info", ".egg-info"):
+    if path.name == "EGG-INFO" and path.parent.suffix == ".egg":
+        path = path.parent
+    if path.suffix not in (".dist-info", ".egg-info", ".egg"):
         return None
     return _normalize(path.name[: -len(path.suffix)].split("-")[0])
 
 
-def pytest_sessionstart(session):
+# Reads whose caller is pytest or pluggy, such as pytest's scan for plugins
+# and the plugin list in its session header, are pytest's, not the project's.
+_PYTEST_MODULES = ("_pytest", "pluggy")
+_METADATA_MODULES = ("importlib.metadata", "importlib_metadata", "functools", __name__)
+
+
+def _read_by_pytest():
+    frame = sys._getframe(2)
+    while frame is not None and frame.f_globals.get("__name__", "").startswith(_METADATA_MODULES):
+        frame = frame.f_back
+    return frame is not None and frame.f_globals.get("__name__", "").startswith(_PYTEST_MODULES)
+
+
+def _record_metadata_read(dist, names):
+    raw = getattr(dist, "_path", None)
+    if not isinstance(raw, (str, os.PathLike)):  # e.g. a zipfile.Path inside a zipped distribution
+        return
+    path = Path(raw)
+    name = _distribution_name(path)
+    if name in names and not path.resolve().is_relative_to(_ROOT) and not _read_by_pytest():
+        _metadata_read.add(name)
+
+
+def _watch_metadata_reads():
     """Record reads of the project's installed metadata from outside the worktree.
 
     The gate names the project's distributions in TSG_DISTS. The action
     installs the project at head, and importlib.metadata reads that install's
     .dist-info in the base run too, so version() and entry_points() give
     head's values there. The importlib_metadata backport is watched the same
-    way when it is installed. Reads before the session starts, such as
-    pytest's own scan for plugins, are not counted.
+    way when it is installed. The wrapper goes in when pytest imports this
+    plugin, before any conftest.py, and it never raises.
     """
     names = {_normalize(n) for n in json.loads(os.environ.get("TSG_DISTS") or "[]")}
     if not names:
@@ -98,13 +124,16 @@ def pytest_sessionstart(session):
         read_text = metadata.PathDistribution.read_text
 
         def recording_read_text(self, filename, read_text=read_text):
-            path = Path(getattr(self, "_path", "") or "")
-            name = _distribution_name(path)
-            if name in names and not path.resolve().is_relative_to(_ROOT):
-                _metadata_read.add(name)
+            try:
+                _record_metadata_read(self, names)
+            except Exception:
+                pass
             return read_text(self, filename)
 
         metadata.PathDistribution.read_text = recording_read_text
+
+
+_watch_metadata_reads()
 
 
 def pytest_configure(config):
@@ -396,7 +425,7 @@ def _watched_imports():
     generated for head, so the gate needs to know whether the base run used
     them. A package can read such a file without importing it, e.g. with
     exec(open(...).read()) in its __init__.py, so a copied file also counts
-    when an imported module in the same folder names it in its source. It
+    when an imported module in the same folder names it, as stem.py, in its source. It
     runs after every test phase under xdist, so it looks only at modules
     imported since the last call.
     """
@@ -424,7 +453,7 @@ def _watched_imports():
             except OSError:
                 continue
             for stem, rel in _watch_dirs[path.parent]:
-                if re.search(rf"\b{re.escape(stem)}\b", text):
+                if re.search(rf"\b{re.escape(stem)}\.py\b", text):
                     _watch_found.add(rel)
     return sorted(_watch_found)
 

@@ -83,12 +83,12 @@ def remove_files(worktree_path, paths):
 
 # Ignored folders that hold environments or build output, not generated code.
 NOT_GENERATED = {".git", ".venv", "venv", "env", ".tox", ".nox", "build", "dist", "node_modules",
-                 "__pycache__", ".eggs", ".mypy_cache", ".pytest_cache", "site-packages"}
+                 "__pycache__", ".eggs", ".mypy_cache", ".pytest_cache", "site-packages", ".pixi", ".conda"}
 
 
 def _generated_folder(path):
     return not (path.name in NOT_GENERATED or path.name.endswith(".egg-info")
-                or (path / "pyvenv.cfg").exists())
+                or (path / "pyvenv.cfg").exists() or (path / "conda-meta").is_dir())
 
 
 def ignored_python_files(repo):
@@ -132,9 +132,14 @@ def copy_generated_files(repo, worktree_path, paths):
     copied = []
     for rel, anchor in sorted(paths.items()):
         target = Path(worktree_path) / rel
-        if (Path(worktree_path) / anchor).is_dir() and not target.exists():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(Path(repo) / rel, target)
+        source = Path(repo) / rel
+        # A broken symlink or anything else that isn't a readable file is left out.
+        if (Path(worktree_path) / anchor).is_dir() and source.is_file() and not target.exists():
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+            except OSError:
+                continue
             copied.append(rel)
     return copied
 
