@@ -15,6 +15,8 @@ from test_strength_gate.cli import main
 from test_strength_gate.gate import run_gate
 from test_strength_gate.report import to_markdown
 
+needs_xdist = pytest.mark.skipif(importlib.util.find_spec("xdist") is None, reason="needs pytest-xdist")
+
 SRC_BASE = {"lib.py": "def double(x):\n    return x + x\n\ndef half(x):\n    return x // 2\n"}
 SRC_HEAD = {"lib.py": "def double(x):\n    return 2 * x\n\ndef half(x):\n    return x / 2\n"}
 WEAK_TEST = {"tests/test_lib.py": "import lib\n\ndef test_double():\n    assert lib.double(3) == 6\n"}
@@ -269,14 +271,19 @@ def test_a_copied_module_the_base_run_never_imported_adds_no_caveat(repo):
     assert "generated for head" not in result.tests[0].reason
 
 
-def test_a_weak_verdict_says_when_the_pr_changes_packaging_metadata(repo, tmp_path, monkeypatch):
-    # Fable audit 2, TSG-18. importlib.metadata reads the installed package's
-    # .dist-info, which head's install wrote, so a test of a bumped version
-    # passes at base. The fake site folder stands in for that install.
+def _fake_head_install(tmp_path, monkeypatch):
+    # A site folder with head's .dist-info stands in for the action's install.
     site = tmp_path / "site"
     (site / "metapkg-2.0.dist-info").mkdir(parents=True)
     (site / "metapkg-2.0.dist-info" / "METADATA").write_text("Metadata-Version: 2.1\nName: metapkg\nVersion: 2.0\n")
     monkeypatch.setenv("PYTHONPATH", str(site))
+
+
+def test_a_pass_at_base_that_read_heads_installed_metadata_is_inconclusive(repo, tmp_path, monkeypatch):
+    # Fable audit 2, TSG-18. importlib.metadata reads the installed package's
+    # .dist-info, which head's install wrote, so a test of a bumped version
+    # passes at base. That pass says nothing about the base code (DECISIONS 62).
+    _fake_head_install(tmp_path, monkeypatch)
     base = repo.commit({"pyproject.toml": "[project]\nname = 'metapkg'\nversion = '1.0'\n",
                         "metapkg/__init__.py": "from importlib.metadata import version\n\n"
                                                "__version__ = version('metapkg')\n"})
@@ -285,8 +292,39 @@ def test_a_weak_verdict_says_when_the_pr_changes_packaging_metadata(repo, tmp_pa
                                                  "    assert metapkg.__version__ == '2.0'\n"})
     result = repo.gate(base, head)
     [test] = result.tests
-    assert test.verdict == WEAK
-    assert result.packaging_files == ["pyproject.toml"]
+    assert (test.base.status, test.verdict) == ("passed", INCONCLUSIVE)
+    assert (result.packaging_files, result.metadata_read) == (["pyproject.toml"], ["metapkg"])
+    assert "metapkg" in test.reason and "head's install" in test.reason
+    assert "metadata from head's install" in to_markdown(result).split("| Test |")[0]
+
+
+@needs_xdist
+def test_a_metadata_read_in_an_xdist_worker_is_seen(repo, tmp_path, monkeypatch):
+    _fake_head_install(tmp_path, monkeypatch)
+    base = repo.commit({"pytest.ini": "[pytest]\naddopts = -n 2\n",
+                        "pyproject.toml": "[project]\nname = 'metapkg'\nversion = '1.0'\n",
+                        "metapkg/__init__.py": "from importlib.metadata import version\n\n"
+                                               "def current():\n    return version('metapkg')\n"})
+    head = repo.commit({"pyproject.toml": "[project]\nname = 'metapkg'\nversion = '2.0'\n",
+                        "tests/test_version.py": "import metapkg\n\ndef test_version():\n"
+                                                 "    assert metapkg.current() == '2.0'\n"})
+    result = repo.gate(base, head)
+    assert result.metadata_read == ["metapkg"]
+    assert [t.verdict for t in result.tests] == [INCONCLUSIVE]
+
+
+def test_a_packaging_change_whose_metadata_the_base_run_never_read_stays_weak(repo, tmp_path, monkeypatch):
+    # The PR changes pyproject.toml, but no test reads the installed metadata,
+    # so the verdict stays weak, with the caveat in case it was read some
+    # way the plugin can't see, such as pkg_resources.
+    _fake_head_install(tmp_path, monkeypatch)
+    base = repo.commit({"pyproject.toml": "[project]\nname = 'metapkg'\ndependencies = []\n",
+                        "metapkg/__init__.py": "def f():\n    return 1\n"})
+    head = repo.commit({"pyproject.toml": "[project]\nname = 'metapkg'\ndependencies = ['attrs']\n",
+                        "tests/test_f.py": "import metapkg\n\ndef test_f():\n    assert metapkg.f() == 1\n"})
+    result = repo.gate(base, head)
+    [test] = result.tests
+    assert test.verdict == WEAK and result.metadata_read == []
     assert "pyproject.toml" in test.reason and "head's install" in test.reason
     assert "installed metadata" in to_markdown(result).split("| Test |")[0]
 
@@ -549,7 +587,6 @@ def test_test_side_file_replaced_by_a_folder_of_the_same_name(repo):
 
 
 XDIST = {"pytest.ini": "[pytest]\naddopts = -n 2\n"}
-needs_xdist = pytest.mark.skipif(importlib.util.find_spec("xdist") is None, reason="needs pytest-xdist")
 
 
 @needs_xdist

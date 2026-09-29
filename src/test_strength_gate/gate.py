@@ -1,5 +1,6 @@
 """The gate itself: find the PR's tests, run them at base and at head, judge them."""
 
+import re
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -41,6 +42,8 @@ class GateResult:
     # changed packaging files; the base run reads the installed package's
     # metadata (version, entry points), which head's install wrote
     packaging_files: list = field(default_factory=list)
+    # the project's distributions whose installed metadata the base run read
+    metadata_read: list = field(default_factory=list)
 
     @property
     def pr_kind(self):
@@ -71,6 +74,23 @@ def _set_origin(outcome, globs):
 # installs the project at head, and importlib.metadata reads that install's
 # .dist-info in the base run too, whatever sys.path says.
 PACKAGING_FILES = {"pyproject.toml", "setup.py", "setup.cfg"}
+
+
+def _distribution_names(repo, rev):
+    """The project's distribution names, from the root packaging files at `rev`."""
+    names = set()
+    for path, sections, pattern in (("pyproject.toml", ("project", "tool.poetry"), r"name\s*=\s*[\"']([^\"']+)[\"']"),
+                                    ("setup.cfg", ("metadata",), r"name\s*=\s*(\S+)")):
+        section = None
+        for line in (gitutil.show(repo, rev, path) or "").splitlines():
+            header = re.match(r"\s*\[([^\]]+)\]", line)
+            if header:
+                section = header.group(1).strip()
+            elif section in sections and (m := re.match(rf"\s*{pattern}", line)):
+                names.add(m.group(1))
+    setup = gitutil.show(repo, rev, "setup.py") or ""
+    names.update(re.findall(r"\bname\s*=\s*[\"']([^\"']+)[\"']", setup))
+    return sorted(names)
 
 
 def _is_docs(path):
@@ -176,7 +196,8 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
         gitutil.remove_files(base_wt, deleted_test_files)
         gitutil.checkout_files(base_wt, head_sha, result.test_files)
         files = sorted({test_id.split("::")[0] for test_id in judged})
-        base_run = run(base_wt, files, select=list(judged), watch=base_copied)
+        dists = _distribution_names(repo, head_sha) if result.packaging_files else []
+        base_run = run(base_wt, files, select=list(judged), watch=base_copied, dists=dists)
         head_run = run(head_wt, files, select=list(judged))
 
     if head_run["misrouted"]:
@@ -184,6 +205,7 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
                                + _misrouted_message(head_run["misrouted"]))
     base_items, head_items = set(base_run["items"]), set(head_run["items"])
     result.copied_imported = sorted(base_run.get("copied_imported") or [])
+    result.metadata_read = sorted(base_run.get("metadata_read") or [])
     for test_id, kind in judged.items():
         file = test_id.split("::")[0]
         if base_run["misrouted"]:
@@ -205,9 +227,16 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
             reason = (f"Passes at base, but the base run imported or read "
                       f"{', '.join(result.copied_imported)}, which the gate copied from the checkout and which was generated "
                       f"for head, so the pass may come from head's values in it.")
-        if label == WEAK and result.packaging_files:
-            reason += (f" The PR changes {', '.join(result.packaging_files)}, and the base run reads installed "
-                       f"metadata such as the version and entry points from head's install, so check that the "
-                       f"test doesn't depend on it.")
+        if label == WEAK and result.packaging_files and result.metadata_read:
+            # The install was made from head, so the pass at base may come
+            # from head's version or entry points rather than from base code.
+            label = INCONCLUSIVE
+            reason = (f"Passes at base, but the base run read the installed metadata of "
+                      f"{', '.join(result.metadata_read)}, which head's install wrote, and the PR changes "
+                      f"{', '.join(result.packaging_files)}, so the pass may come from head's metadata.")
+        elif label == WEAK and result.packaging_files:
+            reason += (f" The PR changes {', '.join(result.packaging_files)}, and installed metadata such as "
+                       f"the version and entry points comes from head's install, so check that the test "
+                       f"doesn't depend on it.")
         result.tests.append(JudgedTest(test_id, kind, base_outcome, head_outcome, label, reason))
     return result

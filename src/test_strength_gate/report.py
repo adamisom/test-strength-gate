@@ -57,7 +57,7 @@ Each judged test was run twice, once on the base commit with only the PR's test-
 
 - **STRONG**: fails at base, so it would catch the source change going missing. A failed check is firm evidence. Another exception counts only if the old code caused it, so its reason says where it was raised and asks you to inspect the cause.
 - **WEAK**: passes at base. This is a prompt for a reviewer, not a failure. It is expected for refactors and for tests that pin down existing behavior, but for a bug fix or feature it can mean the test doesn't exercise the change.
-- **INCONCLUSIVE**: fails at base because the code it calls doesn't exist yet (import, attribute or signature errors), because it reads a file that exists at head but not in the base run, or because setup failed. It shows the API or input is new, not that the behavior is checked. It is also used when a pytest run fails as a whole (a timeout or an internal error), or when a test was not collected or not run at base or at head, since the result is then unknown. A test that passes at base is inconclusive too when the base run imported a git-ignored file the gate copied from the checkout, since that file was generated for head.
+- **INCONCLUSIVE**: fails at base because the code it calls doesn't exist yet (import, attribute or signature errors), because it reads a file that exists at head but not in the base run, or because setup failed. It shows the API or input is new, not that the behavior is checked. It is also used when a pytest run fails as a whole (a timeout or an internal error), or when a test was not collected or not run at base or at head, since the result is then unknown. A test that passes at base is inconclusive too when the base run imported a git-ignored file the gate copied from the checkout, since that file was generated for head, or when the PR changes packaging files and the base run read the project's installed metadata, which head's install wrote.
 - **BROKEN_AT_HEAD**: does not pass at head, so nothing else about it can be judged.
 - **SKIPPED**: skipped, so not judged."""
 
@@ -104,6 +104,14 @@ def _packaging_note(paths):
             f"was made from head, so a test that checks them can pass at base and look weak.")
 
 
+def _metadata_read_note(names, paths):
+    shown = ", ".join(f"`{_cell(p)}`" for p in paths)
+    return (f"**The base run read metadata from head's install.** The PR changes {shown}, and the base run "
+            f"read the installed metadata of {', '.join(f'`{n}`' for n in names)}, such as its version or "
+            f"entry points, which the install made from head wrote. A test that checks them can pass at base "
+            f"for that reason, so tests that pass at base are inconclusive here rather than weak.")
+
+
 def to_markdown(result):
     lines = ["## Test strength gate", "", summary_line(result.tests), ""]
     if result.tests and result.pr_kind in PR_KIND_NOTES:
@@ -112,7 +120,9 @@ def to_markdown(result):
         lines += [_other_files_note(result.other_files, set(result.deleted_files)), ""]
     if result.copied_imported and any(t.base.status == "passed" for t in result.tests):
         lines += [_copied_imported_note(result.copied_imported), ""]
-    if result.packaging_files and any(t.verdict == WEAK for t in result.tests):
+    if result.packaging_files and result.metadata_read and any(t.base.status == "passed" for t in result.tests):
+        lines += [_metadata_read_note(result.metadata_read, result.packaging_files), ""]
+    elif result.packaging_files and any(t.verdict == WEAK for t in result.tests):
         lines += [_packaging_note(result.packaging_files), ""]
     lines += [f"Base `{result.base[:10]}`, head `{result.head[:10]}`. Changed test files: "
               f"{len(result.test_files)}. Changed Python source files: {len(result.source_files)}.", ""]

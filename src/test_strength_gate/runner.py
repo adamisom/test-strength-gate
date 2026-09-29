@@ -10,12 +10,14 @@ PLUGIN_DIR = Path(__file__).parent / "plugin"
 
 
 def run_pytest(python, worktree, files, original_repo, extra_args=(), select=None, collect_only=False,
-               timeout=900, watch=()):
+               timeout=900, watch=(), dists=()):
     """Run pytest on `files` inside `worktree` and return the recorder's data.
 
     `select` is a list of test IDs to run; the plugin deselects the rest.
     `watch` is a list of worktree-relative .py paths; the result's
-    'copied_imported' says which of them the run imported.
+    'copied_imported' says which of them the run imported or read.
+    `dists` names the project's distributions; the result's 'metadata_read'
+    says which of them had installed metadata read from outside the worktree.
     Passing node IDs on the command line is not safe, because one ID that
     does not exist at base makes pytest abort the whole run.
 
@@ -41,8 +43,11 @@ def run_pytest(python, worktree, files, original_repo, extra_args=(), select=Non
                    PYTHONDONTWRITEBYTECODE="1")
         env.pop("TSG_SELECT", None)
         env.pop("TSG_WATCH", None)
+        env.pop("TSG_DISTS", None)
         if watch:
             env["TSG_WATCH"] = json.dumps(sorted(watch))
+        if dists:
+            env["TSG_DISTS"] = json.dumps(sorted(dists))
         if select is not None:
             select_file = Path(tmp) / "select.json"
             select_file.write_text(json.dumps(sorted(select)))
@@ -58,7 +63,8 @@ def run_pytest(python, worktree, files, original_repo, extra_args=(), select=Non
         if collect_only:
             cmd.append("--collect-only")
         cmd += list(files)
-        empty = {"items": [], "collect_errors": {}, "results": {}, "misrouted": {}, "copied_imported": []}
+        empty = {"items": [], "collect_errors": {}, "results": {}, "misrouted": {}, "copied_imported": [],
+                 "metadata_read": []}
         try:
             # A conftest or plugin can write bytes that aren't UTF-8 past
             # pytest's capture; they only matter for the startup error text.

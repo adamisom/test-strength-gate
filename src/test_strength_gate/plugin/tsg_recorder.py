@@ -10,6 +10,8 @@ Settings come from environment variables:
   TSG_SELECT         optional JSON list of IDs; every other test is deselected
   TSG_ORIGINAL_REPO  optional path of the real checkout, to spot imports from it
   TSG_WATCH          optional JSON list of worktree-relative .py paths, to report which were imported or read
+  TSG_DISTS          optional JSON list of the project's distribution names, to report reads of their
+                     installed metadata from outside the worktree
 
 The JSON has five keys:
   items           IDs of collected (and selected) tests; one listed here but
@@ -34,7 +36,8 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(os.environ.get("TSG_ROOT", ".")).resolve()
-_data = {"items": [], "collect_errors": {}, "results": {}, "misrouted": {}, "copied_imported": []}
+_data = {"items": [], "collect_errors": {}, "results": {}, "misrouted": {}, "copied_imported": [],
+         "metadata_read": []}
 _config = None
 
 
@@ -51,6 +54,38 @@ def _canonical_id(path, nodeid):
         rel = str(path)
     rest = nodeid.split("::", 1)[1] if "::" in nodeid else ""
     return f"{rel}::{rest}" if rest else rel
+
+
+def _normalize(name):
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+_metadata_read = set()
+
+
+def pytest_sessionstart(session):
+    """Record reads of the project's installed metadata from outside the worktree.
+
+    The gate names the project's distributions in TSG_DISTS. The action
+    installs the project at head, and importlib.metadata reads that install's
+    .dist-info in the base run too, so version() and entry_points() give
+    head's values there. Reads before the session starts, such as pytest's
+    own scan for plugins, are not counted.
+    """
+    names = {_normalize(n) for n in json.loads(os.environ.get("TSG_DISTS") or "[]")}
+    if not names:
+        return
+    import importlib.metadata as metadata
+    read_text = metadata.PathDistribution.read_text
+
+    def recording_read_text(self, filename):
+        path = Path(getattr(self, "_path", "") or "")
+        if path.suffix in (".dist-info", ".egg-info") and _normalize(path.name.split("-")[0]) in names:
+            if not path.resolve().is_relative_to(_ROOT):
+                _metadata_read.add(_normalize(path.name.split("-")[0]))
+        return read_text(self, filename)
+
+    metadata.PathDistribution.read_text = recording_read_text
 
 
 def pytest_configure(config):
@@ -209,7 +244,8 @@ def pytest_runtest_makereport(item, call):
         "xfail": hasattr(report, "wasxfail"),
         # Under pytest-xdist the worker, not the main process, imports the
         # project, so only the worker can see where the modules came from.
-        **({"misrouted": _worker_misrouted(), "copied_imported": _watched_imports()}
+        **({"misrouted": _worker_misrouted(), "copied_imported": _watched_imports(),
+            "metadata_read": sorted(_metadata_read)}
            if hasattr(item.config, "workerinput") else {}),
     }))
 
@@ -223,6 +259,9 @@ def pytest_runtest_logreport(report):
     for path in info.get("copied_imported") or ():
         if path not in _data["copied_imported"]:
             _data["copied_imported"].append(path)
+    for name in info.get("metadata_read") or ():
+        if name not in _data["metadata_read"]:
+            _data["metadata_read"].append(name)
     phases = _data["results"].setdefault(info["id"], {})
     phases[report.when] = {
         "outcome": report.outcome,
@@ -379,4 +418,5 @@ def pytest_sessionfinish(session):
     for module, path in _misrouted_imports().items():
         _data["misrouted"].setdefault(module, path)
     _data["copied_imported"] = sorted(set(_data["copied_imported"]) | set(_watched_imports()))
+    _data["metadata_read"] = sorted(set(_data["metadata_read"]) | _metadata_read)
     Path(os.environ["TSG_OUT"]).write_text(json.dumps(_data, indent=2))
