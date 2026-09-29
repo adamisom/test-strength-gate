@@ -127,7 +127,9 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
     for status, path in gitutil.changed_files(repo, base_sha, head_sha):
         if status == "D":
             result.deleted_files.append(path)
-        if PurePosixPath(path).name in PACKAGING_FILES and not matches_any(path, globs):
+        # A packaging file inside a tests folder is test data. The user's
+        # globs don't decide it, because they may name the real pyproject.toml.
+        if PurePosixPath(path).name in PACKAGING_FILES and "tests" not in PurePosixPath(path).parts:
             result.packaging_files.append(path)
         if matches_any(path, globs):
             if status != "D":

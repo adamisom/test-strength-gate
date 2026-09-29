@@ -618,3 +618,11 @@ Source: Fable audit 3, 9/29/26 (TSG-42).
 - **Context.** Six one-line changes to these rules left the suite green: counting metadata reads inside the worktree, dropping dots from name normalization, xdist workers not reporting copied files, and ignoring names from `setup.py`, `setup.cfg` or `[tool.poetry]`.
 - **Choice.** Unit tests for where a read counts and for each packaging file's name, a dotted-name case, and an xdist case for copied files. Each of the six changes now fails a test.
 - **Why.** These rules decide between weak and inconclusive, and a silent break in any of them would bring back a wrong weak.
+
+## 67. A packaging file is test data only inside a tests folder
+Source: Codex review, round 3, 9/29/26 (TSG-44), and the Fable re-check of it. Changes entry 65.
+
+- **Context.** Entry 65 left out packaging files that match the test patterns, so that `tests/fixtures/pyproject.toml` is test data. A user whose globs name the real `pyproject.toml`, e.g. `--test-glob pyproject.toml`, or a monorepo folder such as `packages/**`, then hid the packaging change, no metadata read was recorded, and a test of a bumped version came out a silent weak.
+- **Choice.** A changed packaging file is test data when one of its folders is named `tests`, whatever the user's globs say. The re-check tried deciding by the tool's default globs as well; both give the same results on these cases, and the folder rule also leaves out a monorepo fixture such as `packages/foo/tests/fixtures/pyproject.toml`.
+- **Alternatives.** Keep the user's globs and add an exception for the root. That still misses a monorepo package's own `pyproject.toml`.
+- **Why.** When the rule is wrong, e.g. a fixture in a folder named `testdata`, the cost is a caveat on weak verdicts, never a silent weak. The re-check found two more gaps in this area that are left open and written into the README's limits: a `dynamic` version read from a source file changes the installed version with no packaging file changing, which can leave a silent weak, and renaming the distribution makes a lookup of the new name fail at base, which comes out strong with the conditional reason. Closing the first means passing distribution names to every base run and reading `dynamic` from head's packaging files, which widens the least settled part of the tool, so it waits for Adam's call on this area.

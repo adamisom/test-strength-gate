@@ -321,7 +321,8 @@ def _fake_head_install(tmp_path, monkeypatch, folder="metapkg-2.0.dist-info", na
     monkeypatch.setenv("PYTHONPATH", str(tmp_path / "site"))
 
 
-def _version_pr(repo, name="metapkg", reader="importlib.metadata", pyproject="pyproject.toml", extra=None):
+def _version_pr(repo, name="metapkg", reader="importlib.metadata", pyproject="pyproject.toml", extra=None,
+                globs=None):
     """A PR that bumps the version in `pyproject` and tests the installed version."""
     base = repo.commit({pyproject: f"[project]\nname = '{name}'\nversion = '1.0'\n",
                         "metapkg/__init__.py": f"from {reader} import version\n\n"
@@ -329,7 +330,7 @@ def _version_pr(repo, name="metapkg", reader="importlib.metadata", pyproject="py
     head = repo.commit({pyproject: f"[project]\nname = '{name}'\nversion = '2.0'\n",
                         "tests/test_version.py": "import metapkg\n\ndef test_version():\n"
                                                  "    assert metapkg.__version__ == '2.0'\n"})
-    return repo.gate(base, head)
+    return repo.gate(base, head, globs=globs)
 
 
 @pytest.mark.parametrize("folder, name", [
@@ -400,10 +401,26 @@ def test_a_zipped_distribution_on_the_path_does_not_break_the_base_run(repo, tmp
     assert (test.verdict, result.metadata_read) == (INCONCLUSIVE, ["metapkg"])
 
 
+@pytest.mark.parametrize("pyproject, globs", [
+    ("pyproject.toml", ["tests/**", "pyproject.toml"]),
+    ("packages/metapkg/pyproject.toml", ["tests/**", "packages/**"]),
+])
+def test_a_packaging_file_the_test_globs_name_is_still_a_packaging_change(repo, tmp_path, monkeypatch,
+                                                                           pyproject, globs):
+    # Codex round 3, TSG-44. TSG-40 left out packaging files that match the
+    # test globs, so a glob naming the real pyproject.toml hid the change and
+    # the version test came out a silent weak.
+    _fake_head_install(tmp_path, monkeypatch)
+    result = _version_pr(repo, pyproject=pyproject, globs=globs)
+    assert (result.packaging_files, result.metadata_read) == ([pyproject], ["metapkg"])
+    assert [t.verdict for t in result.tests] == [INCONCLUSIVE]
+
+
 def test_a_pyproject_that_is_test_data_is_not_a_packaging_change(repo):
     # Fable audit 3, TSG-40.
     base = repo.commit(SRC_BASE)
-    head = repo.commit({**WEAK_TEST, "tests/fixtures/pyproject.toml": "[project]\nname = 'sample'\n"})
+    head = repo.commit({**WEAK_TEST, "tests/fixtures/pyproject.toml": "[project]\nname = 'sample'\n",
+                        "pkg/tests/fixtures/setup.cfg": "[metadata]\nname = sample\n"})
     result = repo.gate(base, head)
     assert result.packaging_files == []
     assert "installed metadata" not in result.tests[0].reason
