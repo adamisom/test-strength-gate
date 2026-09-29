@@ -1,5 +1,6 @@
 """Thin wrappers around the git commands the gate needs."""
 
+import os
 import shutil
 import subprocess
 from contextlib import contextmanager
@@ -78,29 +79,59 @@ def remove_files(worktree_path, paths):
         git(worktree_path, "rm", "-q", "-f", "--ignore-unmatch", "--", *paths)
 
 
+# Ignored folders that hold environments or build output, not generated code.
+NOT_GENERATED = {".git", ".venv", "venv", "env", ".tox", ".nox", "build", "dist", "node_modules",
+                 "__pycache__", ".eggs", ".mypy_cache", ".pytest_cache", "site-packages"}
+
+
+def _generated_folder(path):
+    return not (path.name in NOT_GENERATED or path.name.endswith(".egg-info")
+                or (path / "pyvenv.cfg").exists())
+
+
 def ignored_python_files(repo):
-    """Git-ignored .py files in the checkout, outside ignored directories.
+    """Git-ignored .py files in the checkout: {path: folder that must exist in the worktree}.
 
     Build tools write files such as a package's version.py (hatch-vcs,
     setuptools-scm) into the checkout during `pip install`, and git ignores
     them, so a fresh worktree lacks them and the package fails to import.
-    `--directory` collapses an ignored directory (a virtualenv, build/) to a
-    single entry ending in '/', so only loose files come back.
+    Code generators such as protobuf write a whole ignored folder, e.g.
+    pkg/gen/. `--directory` collapses an ignored folder to one entry ending
+    in '/', so loose files come back as they are, and the .py files in an
+    ignored folder are listed by walking it, skipping folders that hold an
+    environment or build output (a virtualenv, build/, node_modules/).
+    A loose file needs its own folder in the worktree, and a file in an
+    ignored folder needs the folder that holds the ignored one.
     """
     out = git(repo, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
-    return [p for p in out.split("\0") if p.endswith(".py")]
+    found = {}
+    for entry in filter(None, out.split("\0")):
+        if entry.endswith(".py"):
+            found[entry] = str(Path(entry).parent)
+        elif entry.endswith("/"):
+            top = Path(repo) / entry
+            if not _generated_folder(top):
+                continue
+            anchor = str(Path(entry).parent)
+            for folder, dirs, files in os.walk(top):
+                dirs[:] = [d for d in dirs if _generated_folder(Path(folder) / d)]
+                for name in files:
+                    if name.endswith(".py"):
+                        found[(Path(folder) / name).relative_to(repo).as_posix()] = anchor
+    return found
 
 
 def copy_generated_files(repo, worktree_path, paths):
-    """Copy `paths` from the checkout into the worktree where their folder exists there.
+    """Copy `paths` ({path: folder that must exist}) from the checkout into the worktree.
 
-    Returns the paths copied. A file whose folder is not in the worktree
-    (it is not tracked at that commit) is left out.
+    Returns the paths copied. A file whose required folder is not in the
+    worktree (it is not tracked at that commit) is left out.
     """
     copied = []
-    for rel in paths:
+    for rel, anchor in sorted(paths.items()):
         target = Path(worktree_path) / rel
-        if target.parent.is_dir() and not target.exists():
+        if (Path(worktree_path) / anchor).is_dir() and not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(Path(repo) / rel, target)
             copied.append(rel)
     return copied

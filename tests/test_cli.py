@@ -180,6 +180,23 @@ def test_generated_version_file_is_copied_into_worktrees(repo):
     assert any("mypkg/version.py" in w and ".venv" not in w for w in result.warnings)
 
 
+def test_generated_modules_in_an_ignored_folder_are_copied_into_worktrees(repo):
+    # Fable audit 2, TSG-19. Code generators such as protobuf write a whole
+    # folder, and .gitignore names the folder. --directory hid its files, so
+    # the package failed to import and the test was BROKEN_AT_HEAD. A real
+    # virtualenv in another ignored folder must still be left out.
+    base = repo.commit({".gitignore": "pkg/gen/\nenvs/\n",
+                        "pkg/__init__.py": "from .gen.api_pb2 import VERSION\n\ndef half(x):\n    return x // 2\n"})
+    head = repo.commit({"pkg/__init__.py": "from .gen.api_pb2 import VERSION\n\ndef half(x):\n    return x / 2\n",
+                        "tests/test_pkg.py": "import pkg\n\ndef test_half():\n    assert pkg.half(3) == 1.5\n"})
+    repo.write({"pkg/gen/__init__.py": "", "pkg/gen/api_pb2.py": "VERSION = 1\n",
+                "envs/py/pyvenv.cfg": "home = /usr\n", "envs/py/lib/site.py": "x = 1\n"})
+    result = repo.gate(base, head)
+    assert [t.verdict for t in result.tests] == [STRONG]
+    [warning] = [w for w in result.warnings if "Copied git-ignored" in w]
+    assert "pkg/gen/api_pb2.py" in warning and "envs/" not in warning
+
+
 def test_a_pass_at_base_that_imported_a_copied_generated_module_is_inconclusive(repo):
     # Codex TSG-15: the checkout's ignored version.py was generated for head,
     # and the gate copies it into the base worktree too. A test of the value

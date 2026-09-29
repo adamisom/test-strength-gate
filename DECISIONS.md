@@ -541,3 +541,11 @@ Source: Fable audit 2, 9/29/26 (TSG-26). Adds to entry 49.
 - **Context.** Under pytest-xdist the check runs after every test phase, and it resolved the path of every module in `sys.modules` each time. With 300 tests and a copied file, the gate took three times as long.
 - **Choice.** It keeps the modules it has seen, as the per-worker misrouting check does (entry 36), resolves each copied path once, and looks only at new modules.
 - **Why.** It can't change a verdict, and the fix is small.
+
+## 57. Generated code in an ignored folder is copied too
+Source: Fable audit 2, 9/29/26 (TSG-19). Changes entry 21.
+
+- **Context.** Entry 21 lists ignored files with `git ls-files --directory`, which collapses an ignored folder to one entry, so only loose files were copied. Code generators such as protobuf write a whole folder, e.g. `pkg/gen/`, and `.gitignore` names the folder. The package then failed to import in both worktrees, and every changed test file came out BROKEN_AT_HEAD although its tests pass in the checkout.
+- **Choice.** The gate still lists with `--directory`, and walks each ignored folder for `.py` files, skipping folders that hold an environment or build output: one with a `pyvenv.cfg`, and names such as `.venv`, `venv`, `env`, `.tox`, `.nox`, `build`, `dist`, `node_modules`, `__pycache__`, `.eggs` and `*.egg-info`. A file in an ignored folder is copied when the folder that holds the ignored one exists in the worktree, and the missing folders are created. The files are watched like any copied file, so under entry 50 a test that passes at base in such a project is inconclusive when the base run imported them, because they were generated for head.
+- **Alternatives.** Drop `--directory` and let git list every ignored file, which descends into every virtualenv and `node_modules`.
+- **Why.** Before, such a project got no verdicts at all. A large ignored data folder is walked once per run, which costs a little time and nothing else.
