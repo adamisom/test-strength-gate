@@ -91,10 +91,10 @@ def _other_files_note(paths, deleted, limit=10):
 
 def _copied_imported_note(paths):
     shown = ", ".join(f"`{p}`" for p in paths)
-    return (f"**The base run imported files generated for head.** It imported {shown}, git-ignored "
-            f"and usually written at install time, which the gate copied from the checkout. A test that "
-            f"checks a value in them can pass at base for that reason, so tests that pass at base are "
-            f"inconclusive here rather than weak.")
+    return (f"**The base run imported files generated for head.** The gate copied {shown} from the "
+            f"checkout, where they are git-ignored and usually written at install time, and the base run "
+            f"imported or read them. A test that checks a value in them can pass at "
+            f"base for that reason, so tests that pass at base are inconclusive here rather than weak.")
 
 
 def to_markdown(result):

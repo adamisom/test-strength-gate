@@ -526,3 +526,18 @@ Source: Fable audit 2, 9/29/26 (TSG-27). Adds to entry 39.
 - **Context.** The runner decoded pytest's stdout and stderr strictly. pytest replaces bad bytes in captured test output, but a conftest or plugin that writes to a file descriptor directly bypasses that. One such byte raised `UnicodeDecodeError`, and the CLI reported it as git output it couldn't read, with no report.
 - **Choice.** The runner decodes pytest's output as UTF-8 with replacement. The CLI's message for a decoding error no longer names git as the source.
 - **Why.** The gate reads its results from the plugin's JSON, and uses pytest's text only for the reason when a run fails as a whole, so a replaced byte costs nothing.
+
+## 55. A copied file read without an import still counts
+Source: Fable audit 2, 9/29/26 (TSG-24). Adds to entries 49 and 50.
+
+- **Context.** Entries 49 and 50 find a copied generated file through the modules loaded from it. A package that reads its version file with `exec(open(...).read())` in `__init__.py` loads no module from it, so the base run used head's value and the test came out weak with no caveat.
+- **Choice.** A copied file also counts when the base run imported a module in the same folder whose source names the file, e.g. `_version` in `pkg/__init__.py`. Such a test is then inconclusive, as in entry 50, and the reason and the note say the base run "imported or read" the file.
+- **Alternatives.** Count the file whenever its package was imported, as the audit suggested first. The existing test with a package that never touches its copied file would then turn inconclusive, and so would every weak verdict in a project whose package holds any generated file. Or add the caveat whenever any file was copied, which is never silent but noisier still.
+- **Why.** The name check covers `exec`, `open` and `runpy` in the package itself without flagging packages that don't use the file. A module elsewhere that builds the path from pieces is still missed; the warning that lists copied files stays as the fallback.
+
+## 56. The copied-file check looks at each module once
+Source: Fable audit 2, 9/29/26 (TSG-26). Adds to entry 49.
+
+- **Context.** Under pytest-xdist the check runs after every test phase, and it resolved the path of every module in `sys.modules` each time. With 300 tests and a copied file, the gate took three times as long.
+- **Choice.** It keeps the modules it has seen, as the per-worker misrouting check does (entry 40), resolves each copied path once, and looks only at new modules.
+- **Why.** It can't change a verdict, and the fix is small.

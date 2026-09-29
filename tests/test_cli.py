@@ -202,6 +202,22 @@ def test_a_pass_at_base_that_imported_a_copied_generated_module_is_inconclusive(
     assert "pkg/version.py" in to_markdown(result).split("| Test |")[0]
 
 
+def test_a_copied_file_read_by_exec_in_its_package_counts_as_imported(repo):
+    # Fable audit 2, TSG-24. The package reads its generated _version.py with
+    # exec() instead of importing it, so no module was loaded from the file,
+    # and the pass at base came out weak with no caveat.
+    init = ("from pathlib import Path\n\nns = {}\n"
+            "exec((Path(__file__).parent / '_version.py').read_text(), ns)\nVERSION = ns['VERSION']\n")
+    base = repo.commit({".gitignore": "pkg/_version.py\n", "pkg/__init__.py": init,
+                        "pkg/app.py": "def f():\n    return 1\n"})
+    head = repo.commit({"tests/test_app.py": "import pkg\n\ndef test_version():\n"
+                                             "    assert pkg.VERSION == '2.0'\n"})
+    repo.write({"pkg/_version.py": "VERSION = '2.0'\n"})
+    result = repo.gate(base, head)
+    assert result.copied_imported == ["pkg/_version.py"]
+    assert [t.verdict for t in result.tests] == [INCONCLUSIVE]
+
+
 def test_a_copied_module_the_base_run_never_imported_adds_no_caveat(repo):
     base = repo.commit({".gitignore": "pkg/version.py\n", "pkg/__init__.py": "",
                         "pkg/app.py": "def f():\n    return 1\n"})

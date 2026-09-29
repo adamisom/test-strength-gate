@@ -1,11 +1,16 @@
 """Unit tests for the pure parts: globs, test IDs, fingerprints, rules, summaries."""
 
+import importlib.util
+import json
+from pathlib import Path
+
 import pytest
 
 from test_strength_gate.classify import (BROKEN_AT_HEAD, INCONCLUSIVE, SKIPPED, STRONG, WEAK,
                                          Outcome, failure_kind, summarize, verdict)
 from test_strength_gate.gate import JudgedTest
 from test_strength_gate.report import LEGEND, summary_line
+from test_strength_gate.runner import PLUGIN_DIR
 from test_strength_gate.selection import (DEFAULT_GLOBS, function_fingerprint, matches_any,
                                           pick_judged, split_test_id)
 
@@ -314,3 +319,24 @@ def test_legend_does_not_claim_file_rows_were_run_twice():
     assert "BROKEN_AT_HEAD if the file fails to import at head" in first
     assert "INCONCLUSIVE if the pytest run at head failed as a whole" in first
     assert "Another exception counts only if the old code caused it" in rest
+
+
+def _load_plugin():
+    spec = importlib.util.spec_from_file_location("tsg_recorder_under_test", PLUGIN_DIR / "tsg_recorder.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_watched_imports_checks_each_module_once(tmp_path, monkeypatch):
+    # Fable audit 2, TSG-26. Under xdist this runs after every test phase, and
+    # it resolved the path of every module in sys.modules each time.
+    recorder = _load_plugin()
+    monkeypatch.setattr(recorder, "_ROOT", tmp_path.resolve())
+    monkeypatch.setenv("TSG_WATCH", json.dumps(["pkg/version.py"]))
+    assert recorder._watched_imports() == []
+    calls = []
+    resolve = Path.resolve
+    monkeypatch.setattr(Path, "resolve", lambda self, *a, **k: calls.append(self) or resolve(self, *a, **k))
+    assert recorder._watched_imports() == []
+    assert calls == []

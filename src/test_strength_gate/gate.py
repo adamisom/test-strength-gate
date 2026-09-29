@@ -187,8 +187,8 @@ def run_gate(repo, base, head, globs=None, pytest_args=(), python="python"):
             # The copied file was generated for head, so the pass at base may
             # come from head's values in it rather than from base code.
             label = INCONCLUSIVE
-            reason = (f"Passes at base, but the base run imported {', '.join(result.copied_imported)}, which the "
-                      f"gate copied from the checkout and which was generated for head, so the pass may come "
-                      f"from head's values in it.")
+            reason = (f"Passes at base, but the base run imported or read "
+                      f"{', '.join(result.copied_imported)}, which the gate copied from the checkout and which was generated "
+                      f"for head, so the pass may come from head's values in it.")
         result.tests.append(JudgedTest(test_id, kind, base_outcome, head_outcome, label, reason))
     return result

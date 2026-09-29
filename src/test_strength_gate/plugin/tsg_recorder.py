@@ -9,7 +9,7 @@ Settings come from environment variables:
   TSG_ROOT           the worktree root; IDs are made relative to it
   TSG_SELECT         optional JSON list of IDs; every other test is deselected
   TSG_ORIGINAL_REPO  optional path of the real checkout, to spot imports from it
-  TSG_WATCH          optional JSON list of worktree-relative .py paths, to report which were imported
+  TSG_WATCH          optional JSON list of worktree-relative .py paths, to report which were imported or read
 
 The JSON has five keys:
   items           IDs of collected (and selected) tests; one listed here but
@@ -324,24 +324,51 @@ def _worker_misrouted():
     return dict(_worker_found)
 
 
+_watch = None
+_watch_dirs = {}
+_watch_scanned = set()
+_watch_found = set()
+
+
 def _watched_imports():
-    """The TSG_WATCH paths that a module in sys.modules was loaded from.
+    """The TSG_WATCH paths that the run imported, or read from a module beside them.
 
     The gate copies git-ignored .py files, such as a version.py written at
     install time, from the checkout into the base worktree. They were
     generated for head, so the gate needs to know whether the base run used
-    them.
+    them. A package can read such a file without importing it, e.g. with
+    exec(open(...).read()) in its __init__.py, so a copied file also counts
+    when an imported module in the same folder names it in its source. It
+    runs after every test phase under xdist, so it looks only at modules
+    imported since the last call.
     """
-    watch = json.loads(os.environ.get("TSG_WATCH") or "[]")
-    if not watch:
+    global _watch
+    if _watch is None:
+        _watch = {}
+        for rel in json.loads(os.environ.get("TSG_WATCH") or "[]"):
+            path = (_ROOT / rel).resolve()
+            _watch[path] = rel
+            _watch_dirs.setdefault(path.parent, []).append((path.stem, rel))
+    if not _watch:
         return []
-    wanted = {(_ROOT / rel).resolve(): rel for rel in watch}
-    found = set()
-    for module in list(sys.modules.values()):
-        file = getattr(module, "__file__", None)
-        if file and Path(file).resolve() in wanted:
-            found.add(wanted[Path(file).resolve()])
-    return sorted(found)
+    new = [name for name in list(sys.modules) if name not in _watch_scanned]
+    _watch_scanned.update(new)
+    for name in new:
+        file = getattr(sys.modules.get(name), "__file__", None)
+        if not file:
+            continue
+        path = Path(file).resolve()
+        if path in _watch:
+            _watch_found.add(_watch[path])
+        elif path.parent in _watch_dirs and path.suffix == ".py":
+            try:
+                text = path.read_text(errors="replace")
+            except OSError:
+                continue
+            for stem, rel in _watch_dirs[path.parent]:
+                if re.search(rf"\b{re.escape(stem)}\b", text):
+                    _watch_found.add(rel)
+    return sorted(_watch_found)
 
 
 def pytest_sessionfinish(session):
