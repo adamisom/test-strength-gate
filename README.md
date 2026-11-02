@@ -47,7 +47,7 @@ The action assumes your workflow has already checked out the repository and inst
 
 Supported runners are Linux and macOS, such as `ubuntu-latest` and `macos-latest`, which is where the tool's own tests run in CI. Windows is not supported. The action's steps use bash, which GitHub's Windows runners also have, but the tool has never run on Windows.
 
-On 9/28/26 the action ran as a step in a real GitHub workflow for the first time, in a small demo repository (adamisom/tsg-demo, private for now) on a pull request with one test of each kind. It gave the expected verdicts, 1 strong, 1 weak and 1 inconclusive, wrote the report to the job summary, and put one "Weak test" warning on the weak test's file. It has not yet run on a pull request from a fork. Its shell step is tested locally against a shallow clone of a merge commit (`tests/test_action.py`), and `examples/action-integration.yml` is a workflow, not yet run, that exercises the action with `uses: ./`.
+On 9/28/26 the action ran as a step in a real GitHub workflow for the first time, in a small demo repository, [adamisom/tsg-demo](https://github.com/adamisom/tsg-demo) ([the run](https://github.com/adamisom/tsg-demo/actions/runs/36468065605)), on a pull request with one test of each kind. It gave the expected verdicts, 1 strong, 1 weak and 1 inconclusive, wrote the report to the job summary, and put one "Weak test" warning on the weak test's file. It has not yet run on a pull request from a fork. Its shell step is tested locally against a shallow clone of a merge commit (`tests/test_action.py`), and `examples/action-integration.yml` is a workflow, not yet run, that exercises the action with `uses: ./`.
 
 To install it, add a workflow like this one. Use the `pull_request` trigger only, run it on a Linux or macOS runner, and check out with `fetch-depth: 2`. If your tests or code use a git submodule, also set `submodules: true`: the gate fills each run's submodule folders from those clones, and the report warns when it can't, for example when the submodule commit the base uses was not fetched. Pin the action to a full commit sha, or to a release tag once one exists. There is no release tag yet.
 
@@ -66,7 +66,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt pytest
-      - uses: adamisom/test-strength-gate@FULL_COMMIT_SHA   # or a release tag
+      - uses: adamisom/test-strength-gate@v0.1.0   # or a full commit SHA
         with:
           fail-on: none
 ```
